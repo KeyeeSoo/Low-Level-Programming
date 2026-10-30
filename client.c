@@ -353,6 +353,10 @@ static void mouse_button(GLFWwindow *w,int button,int action,int mods){
     if(action==GLFW_RELEASE && app.trace.status==TRACE_DRAWING){
         trace_mouse_up(&app.trace,(float)x,(float)y);
         int success=app.trace.status==TRACE_SUCCESS;
+        fprintf(stderr,"[trace] %s shape=%s direction=%d accuracy=%.1f%% completion=%.1f%% session=%d\n",
+            success?"SUCCESS":"FAILED",trace_shape_name(app.trace.shape),
+            app.trace.direction,100.0f*trace_accuracy(&app.trace),
+            100.0f*trace_completion(&app.trace),app.state.int_session);
         if(app.state.int_phase==PHASE_TRACE){
             send_action(success?ACTION_TRACE_OK:ACTION_TRACE_BAD);
             app.pending_result=1; /* Wait for server's new state. */
@@ -387,7 +391,7 @@ static void draw_scene(void){
     label(22,481,1.10f,"WASD / Arrows: Move");
     label(22,504,1.10f,"E: Interact  Q: Drop");
     label(22,527,1.08f,"Mouse: Trace / Stir");
-    label(22,559,1.05f,"Follow green start dot");
+    label(22,559,1.05f,"Trace either direction");
     rect(199,104,588,482,.35f,.27f,.28f,1);
     for(int y=138;y<580;y+=30){
         glPushAttrib(GL_CURRENT_BIT|GL_ENABLE_BIT);glDisable(GL_TEXTURE_2D);
@@ -460,7 +464,7 @@ static void draw_trace(void){
     else snprintf(status,sizeof(status),"%s | Accuracy %.0f%% | Completion %.0f%%",
          trace_status_name(app.trace.status),100*trace_accuracy(&app.trace),100*trace_completion(&app.trace));
     draw_text(240,500,1.30f,status,.91f,.88f,.96f);
-    draw_text(240,521,1.05f,"Click green dot, hold mouse, follow dots, release.",.91f,.88f,.96f);
+    draw_text(240,521,1.05f,"Start at green dot; follow dots either way; release.",.91f,.88f,.96f);
 }
 static void handle_keys(GLFWwindow *w){
     int e=glfwGetKey(w,GLFW_KEY_E)==GLFW_PRESS;

@@ -22,4 +22,7 @@ gcc $FLAGS test_game.c GameRules.c Trace.c -o test_game -lm
 gcc $FLAGS test_threads.c ServerBridge.c GameRules.c -o test_threads -lm
 ./test_game
 ./test_threads
+# Exercise the integrated reverse-trace -> potion action -> stir sequence.
+gcc $FLAGS test_trace_integration.c GameRules.c Trace.c -o test_trace_integration -lm
+./test_trace_integration
 echo 'Build complete: ./server and ./client'

@@ -4,7 +4,7 @@
 /*
  * Pure-C mouse-tracing detector. No OpenGL, DDS, or GLFW dependencies.
  * Coordinates are in the same top-left-origin pixel system as the client.
- * The target path must be ordered, including the intended tracing direction.
+ * The target path must be ordered; either tracing direction is accepted.
  */
 
 #define TRACE_MAX_TARGET_POINTS 2048
@@ -46,9 +46,11 @@ typedef struct {
     TracePoint stroke[TRACE_MAX_STROKE_POINTS];
     int stroke_count;
     int progress_index;
+    int direction;       /* 0 = undecided, +1 = original, -1 = reversed */
     float progress_length;
     float mouse_distance;
     float valid_distance;
+    float unmatched_distance; /* mouse travel since last accepted target point */
     TracePoint previous_cursor;
     TraceStatus status;
 } TraceSession;

@@ -26,9 +26,11 @@ void trace_reset(TraceSession *session)
     if (session == NULL) return;
     session->stroke_count = 0;
     session->progress_index = 0;
+    session->direction = 0;
     session->progress_length = 0.0f;
     session->mouse_distance = 0.0f;
     session->valid_distance = 0.0f;
+    session->unmatched_distance = 0.0f;
     session->previous_cursor = (TracePoint){0, 0};
     session->status = TRACE_READY;
 }
@@ -140,6 +142,51 @@ void trace_mouse_down(TraceSession *session, float x, float y)
     session->stroke[session->stroke_count++] = p;
 }
 
+/* Reverse the target's *point order* once a tracing direction is clear.
+ * This keeps the rest of the sequential matcher unchanged, including its
+ * protection against jumping across the crossing lines of a pentagram.
+ * Closed targets finish at the same start dot in either direction. */
+static void reverse_target(TraceSession *session)
+{
+    int n = session->target_count;
+    for (int i = 0; i < n / 2; ++i) {
+        TracePoint temp = session->target[i];
+        session->target[i] = session->target[n - 1 - i];
+        session->target[n - 1 - i] = temp;
+    }
+    session->cumulative_length[0] = 0.0f;
+    for (int i = 1; i < n; ++i) {
+        session->cumulative_length[i] = session->cumulative_length[i - 1] +
+            distance_between(session->target[i - 1], session->target[i]);
+    }
+    session->target_length = session->cumulative_length[n - 1];
+}
+
+/* Check the first ~75 pixels of both legs leaving the green dot. We defer
+ * committing to a direction until the cursor has moved far enough that
+ * forward/backward are distinguishable. Works with loops and pentagrams.
+ */
+static void initial_leg_distances(const TraceSession *session, TracePoint p,
+                                  float *forward, float *backward)
+{
+    *forward = 1.0e30f;
+    *backward = 1.0e30f;
+    int n = session->target_count;
+    for (int i = 0; i < n; ++i) {
+        float d = distance_between(p, session->target[i]);
+        if (session->cumulative_length[i] <= 75.0f && d < *forward)
+            *forward = d;
+        if (session->target_length - session->cumulative_length[i] <= 75.0f &&
+            d < *backward)
+            *backward = d;
+    }
+}
+
+/* Sample-by-sample path matching, with controlled recovery if the cursor
+ * briefly leaves the line. Earlier code searched only 16 points ahead and
+ * could become permanently stuck after a missed turn (roughly 64 pixels).
+ * We now expand the search as the cursor travels, without accepting a large
+ * forward teleport. We still score deviations as inaccurate. */
 static void trace_sample(TraceSession *session, TracePoint p, float step)
 {
     if (session->stroke_count >= TRACE_MAX_STROKE_POINTS) {
@@ -148,33 +195,61 @@ static void trace_sample(TraceSession *session, TracePoint p, float step)
     }
     session->stroke[session->stroke_count++] = p;
     session->mouse_distance += step;
+    session->unmatched_distance += step;
 
-    /* Search only the next short section of the ordered path. This prevents
-       jumping to a different petal/edge at intersections or near-contacts. */
-    int start = session->progress_index - 3;
-    if (start < 0) start = 0;
-    int end = session->progress_index + 16;
-    if (end >= session->target_count) end = session->target_count - 1;
+    if (session->direction == 0) {
+        float forward, backward;
+        initial_leg_distances(session, p, &forward, &backward);
 
-    float best_distance = 1e30f;
+        /* While direction is unknown, travelling along either initial leg
+         * counts as accurate. Do not advance target progress yet. */
+        int sufficiently_far =
+            distance_between(p, session->target[0]) >= 18.0f &&
+            session->mouse_distance >= 18.0f;
+        int choose_forward = forward <= TRACE_TOLERANCE_PIXELS &&
+                             forward + 4.0f < backward;
+        int choose_reverse = backward <= TRACE_TOLERANCE_PIXELS &&
+                             backward + 4.0f < forward;
+        if (sufficiently_far && (choose_forward || choose_reverse)) {
+            if (choose_reverse) reverse_target(session);
+            session->direction = choose_reverse ? -1 : +1;
+            /* Fall through to the normal sequential matcher for this step. */
+        } else {
+            if (fminf(forward, backward) <= TRACE_TOLERANCE_PIXELS)
+                session->valid_distance += step;
+            return;
+        }
+    }
+
+    /* Limit recovery to 150 px of future target path, and require roughly
+       the same amount of cursor travel to catch up. A path crossing cannot
+       instantly jump across the star to a distant segment. */
+    float advance_budget = fminf(150.0f, session->unmatched_distance + 16.0f);
+    float furthest = session->progress_length + advance_budget;
+    int begin = session->progress_index > 4 ? session->progress_index - 4 : 0;
+    int end = begin;
+    while (end + 1 < session->target_count &&
+           session->cumulative_length[end + 1] <= furthest)
+        end++;
+    if (end < session->progress_index) end = session->progress_index;
+
+    float best_distance = 1.0e30f;
     int best_index = -1;
-    for (int i = start; i <= end; i++) {
+    for (int i = begin; i <= end; i++) {
         float d = distance_between(p, session->target[i]);
-        /* Progress must be plausible for the distance the mouse moved. */
-        float max_length = session->progress_length + 2.4f * step + 10.0f;
-        if (d < best_distance &&
-            session->cumulative_length[i] <= max_length) {
+        if (d < best_distance - 0.01f ||
+            (fabsf(d - best_distance) <= 0.01f && i > best_index)) {
             best_distance = d;
             best_index = i;
         }
     }
-
     if (best_index >= 0 && best_distance <= TRACE_TOLERANCE_PIXELS) {
         session->valid_distance += step;
         if (best_index > session->progress_index) {
             session->progress_index = best_index;
             session->progress_length = session->cumulative_length[best_index];
         }
+        session->unmatched_distance = 0.0f;
     }
 }
 
