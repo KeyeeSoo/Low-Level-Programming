@@ -1,0 +1,202 @@
+[server main] Game state loop running (authoritative owner)
+[server DDS worker] running
+[server DDS] alive: joins=0 inputs=0 actions=0 posTx=0 stateTx=48
+[server MAIN] alive: ticks=124 players=0 stage=0 phase=0 rev=0 queued=0 dropped=0
+[server DDS] alive: joins=0 inputs=0 actions=0 posTx=0 stateTx=95
+[server MAIN] alive: ticks=246 players=0 stage=0 phase=0 rev=0 queued=0 dropped=0
+[server DDS] alive: joins=0 inputs=0 actions=0 posTx=0 stateTx=143
+[server MAIN] alive: ticks=370 players=0 stage=0 phase=0 rev=0 queued=0 dropped=0
+[server DDS] alive: joins=0 inputs=0 actions=0 posTx=0 stateTx=191
+[server MAIN] alive: ticks=494 players=0 stage=0 phase=0 rev=0 queued=0 dropped=0
+[server main] token 1790774701 -> player 1
+[server DDS] alive: joins=1 inputs=0 actions=0 posTx=34 stateTx=239
+[server MAIN] alive: ticks=617 players=1 stage=0 phase=0 rev=1 queued=0 dropped=0
+[server DDS] alive: joins=1 inputs=0 actions=0 posTx=82 stateTx=287
+[server MAIN] alive: ticks=741 players=1 stage=0 phase=0 rev=1 queued=0 dropped=0
+[server DDS] alive: joins=1 inputs=0 actions=0 posTx=130 stateTx=335
+[server MAIN] alive: ticks=865 players=1 stage=0 phase=0 rev=1 queued=0 dropped=0
+[server DDS] alive: joins=1 inputs=0 actions=0 posTx=178 stateTx=383
+[server MAIN] alive: ticks=989 players=1 stage=0 phase=0 rev=1 queued=0 dropped=0
+[server main] token 1787137461 -> player 2
+[server DDS] alive: joins=2 inputs=0 actions=0 posTx=270 stateTx=432
+[server MAIN] alive: ticks=1113 players=2 stage=0 phase=0 rev=2 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=10 actions=0 posTx=364 stateTx=479
+[server MAIN] alive: ticks=1237 players=2 stage=0 phase=0 rev=2 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=21 actions=0 posTx=460 stateTx=527
+[server MAIN] alive: ticks=1361 players=2 stage=0 phase=0 rev=2 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=24 actions=0 posTx=556 stateTx=575
+[server MAIN] alive: ticks=1485 players=2 stage=0 phase=0 rev=2 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=36 actions=0 posTx=652 stateTx=623
+[server MAIN] alive: ticks=1609 players=2 stage=0 phase=0 rev=2 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=38 actions=0 posTx=748 stateTx=671
+[server MAIN] alive: ticks=1733 players=2 stage=0 phase=0 rev=2 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=38 actions=0 posTx=844 stateTx=719
+[server MAIN] alive: ticks=1857 players=2 stage=0 phase=0 rev=2 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=38 actions=0 posTx=940 stateTx=767
+[server MAIN] alive: ticks=1981 players=2 stage=0 phase=0 rev=2 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=38 actions=0 posTx=1036 stateTx=815
+[server MAIN] alive: ticks=2105 players=2 stage=0 phase=0 rev=2 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=38 actions=0 posTx=1134 stateTx=864
+[server MAIN] alive: ticks=2229 players=2 stage=0 phase=0 rev=2 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=38 actions=0 posTx=1230 stateTx=912
+[server MAIN] alive: ticks=2353 players=2 stage=0 phase=0 rev=2 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=38 actions=0 posTx=1326 stateTx=960
+[server MAIN] alive: ticks=2477 players=2 stage=0 phase=0 rev=2 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=38 actions=0 posTx=1422 stateTx=1008
+[server MAIN] alive: ticks=2601 players=2 stage=0 phase=0 rev=2 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=38 actions=0 posTx=1518 stateTx=1056
+[server MAIN] alive: ticks=2725 players=2 stage=0 phase=0 rev=2 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=52 actions=0 posTx=1614 stateTx=1104
+[server MAIN] alive: ticks=2849 players=2 stage=0 phase=0 rev=2 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=81 actions=0 posTx=1710 stateTx=1152
+[server MAIN] alive: ticks=2973 players=2 stage=0 phase=0 rev=2 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=96 actions=0 posTx=1806 stateTx=1200
+[server MAIN] alive: ticks=3097 players=2 stage=0 phase=0 rev=2 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=142 actions=0 posTx=1902 stateTx=1248
+[server MAIN] alive: ticks=3221 players=2 stage=0 phase=0 rev=2 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=155 actions=0 posTx=1998 stateTx=1296
+[server MAIN] alive: ticks=3344 players=2 stage=0 phase=0 rev=2 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=155 actions=0 posTx=2094 stateTx=1344
+[server MAIN] alive: ticks=3468 players=2 stage=0 phase=0 rev=2 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=155 actions=0 posTx=2190 stateTx=1392
+[server MAIN] alive: ticks=3592 players=2 stage=0 phase=0 rev=2 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=166 actions=0 posTx=2286 stateTx=1440
+[server MAIN] alive: ticks=3716 players=2 stage=0 phase=0 rev=2 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=184 actions=1 posTx=2382 stateTx=1488
+[server MAIN] alive: ticks=3840 players=2 stage=0 phase=0 rev=3 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=228 actions=1 posTx=2476 stateTx=1535
+[server MAIN] alive: ticks=3964 players=2 stage=0 phase=0 rev=3 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=228 actions=1 posTx=2572 stateTx=1583
+[server MAIN] alive: ticks=4088 players=2 stage=0 phase=0 rev=3 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=230 actions=1 posTx=2668 stateTx=1631
+[server MAIN] alive: ticks=4212 players=2 stage=0 phase=0 rev=3 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=258 actions=1 posTx=2764 stateTx=1679
+[server MAIN] alive: ticks=4336 players=2 stage=0 phase=0 rev=3 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=263 actions=1 posTx=2860 stateTx=1727
+[server MAIN] alive: ticks=4460 players=2 stage=0 phase=0 rev=3 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=263 actions=1 posTx=2956 stateTx=1775
+[server MAIN] alive: ticks=4584 players=2 stage=0 phase=0 rev=3 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=263 actions=1 posTx=3050 stateTx=1822
+[server MAIN] alive: ticks=4708 players=2 stage=0 phase=0 rev=3 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=263 actions=1 posTx=3146 stateTx=1870
+[server MAIN] alive: ticks=4832 players=2 stage=0 phase=0 rev=3 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=271 actions=1 posTx=3242 stateTx=1918
+[server MAIN] alive: ticks=4956 players=2 stage=0 phase=0 rev=3 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=271 actions=2 posTx=3340 stateTx=1967
+[server MAIN] alive: ticks=5080 players=2 stage=0 phase=0 rev=4 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=289 actions=2 posTx=3436 stateTx=2015
+[server MAIN] alive: ticks=5204 players=2 stage=0 phase=0 rev=4 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=307 actions=2 posTx=3532 stateTx=2063
+[server MAIN] alive: ticks=5328 players=2 stage=0 phase=0 rev=4 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=342 actions=2 posTx=3628 stateTx=2111
+[server MAIN] alive: ticks=5452 players=2 stage=0 phase=0 rev=4 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=355 actions=2 posTx=3724 stateTx=2159
+[server MAIN] alive: ticks=5576 players=2 stage=0 phase=0 rev=4 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=355 actions=2 posTx=3820 stateTx=2207
+[server MAIN] alive: ticks=5700 players=2 stage=0 phase=0 rev=4 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=358 actions=2 posTx=3916 stateTx=2255
+[server MAIN] alive: ticks=5824 players=2 stage=0 phase=0 rev=4 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=364 actions=3 posTx=4014 stateTx=2304
+[server MAIN] alive: ticks=5948 players=2 stage=0 phase=0 rev=5 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=406 actions=3 posTx=4110 stateTx=2352
+[server MAIN] alive: ticks=6072 players=2 stage=0 phase=0 rev=5 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=444 actions=3 posTx=4206 stateTx=2400
+[server MAIN] alive: ticks=6196 players=2 stage=0 phase=0 rev=5 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=456 actions=3 posTx=4302 stateTx=2448
+[server MAIN] alive: ticks=6320 players=2 stage=0 phase=0 rev=5 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=460 actions=3 posTx=4400 stateTx=2497
+[server MAIN] alive: ticks=6444 players=2 stage=0 phase=0 rev=5 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=464 actions=3 posTx=4496 stateTx=2545
+[server MAIN] alive: ticks=6568 players=2 stage=0 phase=0 rev=5 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=464 actions=4 posTx=4592 stateTx=2593
+[server MAIN] alive: ticks=6692 players=2 stage=0 phase=0 rev=6 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=510 actions=4 posTx=4690 stateTx=2642
+[server MAIN] alive: ticks=6816 players=2 stage=0 phase=0 rev=6 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=556 actions=4 posTx=4786 stateTx=2690
+[server MAIN] alive: ticks=6940 players=2 stage=0 phase=0 rev=6 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=582 actions=5 posTx=4884 stateTx=2739
+[server MAIN] alive: ticks=7064 players=2 stage=0 phase=0 rev=7 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=626 actions=5 posTx=4978 stateTx=2786
+[server MAIN] alive: ticks=7188 players=2 stage=0 phase=0 rev=7 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=673 actions=5 posTx=5076 stateTx=2835
+[server MAIN] alive: ticks=7312 players=2 stage=0 phase=0 rev=7 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=681 actions=5 posTx=5172 stateTx=2883
+[server MAIN] alive: ticks=7436 players=2 stage=0 phase=0 rev=7 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=685 actions=5 posTx=5268 stateTx=2931
+[server MAIN] alive: ticks=7560 players=2 stage=0 phase=0 rev=7 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=700 actions=5 posTx=5364 stateTx=2979
+[server MAIN] alive: ticks=7684 players=2 stage=0 phase=0 rev=7 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=5 posTx=5460 stateTx=3027
+[server MAIN] alive: ticks=7808 players=2 stage=0 phase=0 rev=7 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=5 posTx=5556 stateTx=3075
+[server MAIN] alive: ticks=7932 players=2 stage=0 phase=0 rev=7 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=5 posTx=5652 stateTx=3123
+[server MAIN] alive: ticks=8056 players=2 stage=0 phase=0 rev=7 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=5 posTx=5748 stateTx=3171
+[server MAIN] alive: ticks=8180 players=2 stage=0 phase=1 rev=8 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=6 posTx=5844 stateTx=3219
+[server MAIN] alive: ticks=8304 players=2 stage=0 phase=1 rev=8 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=6 posTx=5940 stateTx=3267
+[server MAIN] alive: ticks=8428 players=2 stage=0 phase=1 rev=8 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=6 posTx=6036 stateTx=3315
+[server MAIN] alive: ticks=8552 players=2 stage=0 phase=1 rev=8 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=6 posTx=6132 stateTx=3363
+[server MAIN] alive: ticks=8676 players=2 stage=0 phase=1 rev=8 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=7 posTx=6228 stateTx=3411
+[server MAIN] alive: ticks=8800 players=2 stage=0 phase=1 rev=9 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=7 posTx=6324 stateTx=3459
+[server MAIN] alive: ticks=8924 players=2 stage=0 phase=1 rev=9 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=7 posTx=6420 stateTx=3507
+[server MAIN] alive: ticks=9048 players=2 stage=0 phase=1 rev=9 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=7 posTx=6516 stateTx=3555
+[server MAIN] alive: ticks=9172 players=2 stage=0 phase=1 rev=9 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=7 posTx=6612 stateTx=3603
+[server MAIN] alive: ticks=9296 players=2 stage=0 phase=1 rev=9 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=7 posTx=6708 stateTx=3651
+[server MAIN] alive: ticks=9420 players=2 stage=0 phase=1 rev=9 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=8 posTx=6804 stateTx=3699
+[server MAIN] alive: ticks=9544 players=2 stage=0 phase=1 rev=10 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=8 posTx=6900 stateTx=3747
+[server MAIN] alive: ticks=9668 players=2 stage=0 phase=1 rev=10 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=8 posTx=6996 stateTx=3795
+[server MAIN] alive: ticks=9792 players=2 stage=0 phase=1 rev=10 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=8 posTx=7092 stateTx=3843
+[server MAIN] alive: ticks=9916 players=2 stage=0 phase=1 rev=10 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=8 posTx=7188 stateTx=3891
+[server MAIN] alive: ticks=10040 players=2 stage=0 phase=1 rev=10 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=8 posTx=7284 stateTx=3939
+[server MAIN] alive: ticks=10164 players=2 stage=0 phase=1 rev=10 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=8 posTx=7380 stateTx=3987
+[server MAIN] alive: ticks=10288 players=2 stage=0 phase=1 rev=10 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=8 posTx=7476 stateTx=4035
+[server MAIN] alive: ticks=10412 players=2 stage=0 phase=1 rev=10 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=8 posTx=7574 stateTx=4084
+[server MAIN] alive: ticks=10536 players=2 stage=0 phase=1 rev=10 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=8 posTx=7668 stateTx=4131
+[server MAIN] alive: ticks=10660 players=2 stage=0 phase=1 rev=10 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=8 posTx=7764 stateTx=4179
+[server MAIN] alive: ticks=10784 players=2 stage=0 phase=1 rev=10 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=8 posTx=7862 stateTx=4228
+[server MAIN] alive: ticks=10908 players=2 stage=0 phase=1 rev=10 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=8 posTx=7958 stateTx=4276
+[server MAIN] alive: ticks=11032 players=2 stage=0 phase=1 rev=10 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=8 posTx=8054 stateTx=4324
+[server MAIN] alive: ticks=11156 players=2 stage=0 phase=1 rev=10 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=8 posTx=8150 stateTx=4372
+[server MAIN] alive: ticks=11280 players=2 stage=0 phase=1 rev=10 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=8 posTx=8246 stateTx=4420
+[server MAIN] alive: ticks=11404 players=2 stage=0 phase=1 rev=10 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=8 posTx=8340 stateTx=4467
+[server MAIN] alive: ticks=11528 players=2 stage=0 phase=1 rev=10 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=9 posTx=8438 stateTx=4516
+[server MAIN] alive: ticks=11652 players=2 stage=0 phase=4 rev=11 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=9 posTx=8534 stateTx=4564
+[server MAIN] alive: ticks=11776 players=2 stage=0 phase=4 rev=11 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=9 posTx=8630 stateTx=4612
+[server MAIN] alive: ticks=11900 players=2 stage=0 phase=4 rev=11 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=9 posTx=8728 stateTx=4661
+[server MAIN] alive: ticks=12024 players=2 stage=0 phase=4 rev=11 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=9 posTx=8824 stateTx=4709
+[server MAIN] alive: ticks=12148 players=2 stage=0 phase=4 rev=11 queued=0 dropped=0
+[server DDS] alive: joins=2 inputs=712 actions=9 posTx=8920 stateTx=4757
+[server MAIN] alive: ticks=12272 players=2 stage=0 phase=4 rev=11 queued=0 dropped=0

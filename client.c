@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L
 /* Gingerbread Curse client, adapted from the original client.c:
    Same JoinRequest/JoinResponse/Input/Position DDS communication, new GameState,
    GameAction, C Render module and mouse rune detection. */
@@ -8,6 +9,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <pthread.h>
+#include <stdatomic.h>
 #include <unistd.h>
 #include <math.h>
 #include "messages.h"
@@ -18,21 +21,59 @@
 #include "stb_easy_font.h"
 
 #define PI 3.14159265358979323846f
-#define CHECK(x) do{dds_return_t rc_=(x);if(rc_<0){fprintf(stderr,"DDS %s: %s\n",#x,dds_strretcode(-rc_));exit(1);}}while(0)
 
+/* Rendering and tracing belong exclusively to the GLFW/main thread. */
 typedef struct {
-    dds_entity_t participant;
-    dds_entity_t join_writer,response_reader,input_writer,position_reader;
-    dds_entity_t action_writer,state_reader;
     int token,id,known_state;
     int visible[MAX_PLAYERS],x[MAX_PLAYERS],y[MAX_PLAYERS];
     GameState state;
     TraceSession trace;
     int shown_phase,shown_stage,shown_session,shown_mistakes;
     int pending_result,prev_e,prev_q;
-    uint64_t last_join,last_input;
+    double last_input_time;
+    int network_failed;
+    char network_error[256];
 } Client;
 static Client app;
+
+/* DDS operates exclusively on the network thread.  Only this small bridge is
+ * shared with the main thread. Never hold its mutex during DDS or OpenGL calls. */
+#define ACTION_QUEUE_CAP 32
+typedef struct { int code,session; } QueuedAction;
+typedef struct {
+    pthread_mutex_t mutex;
+    pthread_t thread;
+    int stop,failed;
+    char error[256];
+    int id,known_state;
+    int visible[MAX_PLAYERS],x[MAX_PLAYERS],y[MAX_PLAYERS];
+    GameState state;
+    char next_direction;
+    QueuedAction actions[ACTION_QUEUE_CAP];
+    int action_read, action_write;
+} NetworkBridge;
+static NetworkBridge net = {.mutex=PTHREAD_MUTEX_INITIALIZER};
+static atomic_ulong client_pos_rx=0, client_state_rx=0;
+static atomic_ulong client_joins_tx=0, client_move_tx=0;
+static uint64_t monotonic_ms(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC,&ts);
+    return (uint64_t)ts.tv_sec*1000u+(uint64_t)ts.tv_nsec/1000000u;
+}
+static dds_qos_t *best_effort_qos(void){
+    dds_qos_t *q=dds_create_qos();
+    if(!q)return NULL;
+    dds_qset_reliability(q,DDS_RELIABILITY_BEST_EFFORT,DDS_MSECS(20));
+    dds_qset_history(q,DDS_HISTORY_KEEP_LAST,8);
+    return q;
+}
+static dds_qos_t *reliable_qos(void){
+    dds_qos_t *q=dds_create_qos();
+    if(!q)return NULL;
+    dds_qset_reliability(q,DDS_RELIABILITY_RELIABLE,DDS_MSECS(100));
+    dds_qset_history(q,DDS_HISTORY_KEEP_LAST,16);
+    return q;
+}
 
 static void rect(float x,float y,float w,float h,float r,float g,float b,float a){
     glPushAttrib(GL_ENABLE_BIT|GL_CURRENT_BIT|GL_COLOR_BUFFER_BIT);
@@ -64,27 +105,21 @@ static void draw_text(float x,float y,float scale,const char *msg,float r,float 
 static void label(float x,float y,float scale,const char *msg){
     draw_text(x,y,scale,msg,.18f,.14f,.19f);
 }
-static dds_entity_t topic(dds_entity_t p,const dds_topic_descriptor_t *desc,const char *name){
-    dds_entity_t t=dds_create_topic(p,desc,name,NULL,NULL);CHECK(t);return t;
-}
-static dds_entity_t reader(dds_entity_t p,dds_entity_t t){dds_entity_t e=dds_create_reader(p,t,NULL,NULL);CHECK(e);return e;}
-static dds_entity_t writer(dds_entity_t p,dds_entity_t t){dds_entity_t e=dds_create_writer(p,t,NULL,NULL);CHECK(e);return e;}
-static void send_join(void){
-    JoinRequest req={0};req.b_dummy=1;req.int_client_token=app.token;
-    CHECK(dds_write(app.join_writer,&req));
-}
+/* Input is queued to the DDS worker; OpenGL callbacks never invoke DDS. */
 static void send_input(char dir){
-    if(app.id<1 || app.id>MAX_PLAYERS)return;
-    Input in={0};in.int_player_id=app.id;in.int_client_token=app.token;
-    in.ch_direction=dir;
-    CHECK(dds_write(app.input_writer,&in));
+    pthread_mutex_lock(&net.mutex);
+    net.next_direction=dir;
+    pthread_mutex_unlock(&net.mutex);
 }
 static void send_action(int action){
     if(app.id<1 || app.id>MAX_PLAYERS || !app.known_state)return;
-    GameAction a={0};a.int_player_id=app.id;
-    a.int_client_token=app.token;a.int_action=action;
-    a.int_session=app.state.int_session;
-    CHECK(dds_write(app.action_writer,&a));
+    pthread_mutex_lock(&net.mutex);
+    int next=(net.action_write+1)%ACTION_QUEUE_CAP;
+    if(next!=net.action_read){
+        net.actions[net.action_write]=(QueuedAction){action,app.state.int_session};
+        net.action_write=next;
+    }else fprintf(stderr,"GameAction queue full; dropped action %d\n",action);
+    pthread_mutex_unlock(&net.mutex);
 }
 /* The star is a five-stroke continuous pentagram, not a concave star outline. */
 static void make_pentagram(TraceSession *t){
@@ -132,32 +167,178 @@ static void receive_state(const GameState *s){
         prepare_trace();
     }
 }
-static void network_poll(void){
-    dds_sample_info_t info[1];dds_return_t n;
-    JoinResponse resp={0};void *rs[1]={&resp};
-    for(int k=0;k<64;k++){
-        n=dds_take(app.response_reader,rs,info,1,1);CHECK(n);if(n==0)break;
-        if(info[0].valid_data && resp.int_client_token==app.token && !app.id){
-            if(resp.int_player_id>=1 && resp.int_player_id<=MAX_PLAYERS){
-                app.id=resp.int_player_id;
-                printf("Joined as Player %d\n",app.id);
-            }else fprintf(stderr,"Server rejected join (game full).\n");
+/* Copy the latest DDS snapshot to the main/GLFW thread under the mutex.
+ * prepare_trace() is only called from this main thread. */
+static void network_snapshot(void){
+    GameState state={0};int have_state,failed;
+    pthread_mutex_lock(&net.mutex);
+    app.id=net.id;
+    memcpy(app.visible,net.visible,sizeof(app.visible));
+    memcpy(app.x,net.x,sizeof(app.x));
+    memcpy(app.y,net.y,sizeof(app.y));
+    have_state=net.known_state;
+    if(have_state)state=net.state;
+    failed=net.failed;
+    if(failed)snprintf(app.network_error,sizeof(app.network_error),"%s",net.error);
+    pthread_mutex_unlock(&net.mutex);
+    app.network_failed=failed;
+    if(have_state)receive_state(&state);
+}
+
+static int network_error(dds_return_t rc,const char *operation){
+    if(rc>=0)return 0;
+    fprintf(stderr,"DDS worker error in %s: %s (%d)\n",
+            operation,dds_strretcode(-rc),(int)rc);
+    pthread_mutex_lock(&net.mutex);
+    net.failed=1;
+    snprintf(net.error,sizeof(net.error),"%s: %s",operation,dds_strretcode(-rc));
+    pthread_mutex_unlock(&net.mutex);
+    return 1;
+}
+
+/* This entire function runs off the main thread.  The participant, topics,
+ * readers and writers are created, used and deleted on this single thread. */
+static void *network_worker(void *unused){
+    (void)unused;
+    dds_entity_t participant=dds_create_participant(DDS_DOMAIN_DEFAULT,NULL,NULL);
+    if(network_error(participant,"dds_create_participant"))return NULL;
+    dds_entity_t jt,rt,it,pt,at,st;
+    dds_entity_t jw,rr,iw,pr,aw,sr;
+    dds_qos_t *stream_qos=best_effort_qos(),*rel_qos=reliable_qos();
+    if(!stream_qos || !rel_qos){
+        fprintf(stderr,"DDS worker: unable to allocate QoS\n");
+        pthread_mutex_lock(&net.mutex);net.failed=1;
+        snprintf(net.error,sizeof(net.error),"QoS allocation failed");
+        pthread_mutex_unlock(&net.mutex);
+        goto dds_cleanup;
+    }
+    /* Do not exit the whole process if DDS startup fails on the worker. */
+#define CREATE_DDS(var, expression, label) do { \
+    (var)=(expression); \
+    if(network_error((var),(label)))goto dds_cleanup; \
+} while(0)
+    CREATE_DDS(jt,dds_create_topic(participant,&JoinRequest_desc,"JoinRequest",NULL,NULL),"create JoinRequest topic");
+    CREATE_DDS(rt,dds_create_topic(participant,&JoinResponse_desc,"JoinResponse",NULL,NULL),"create JoinResponse topic");
+    CREATE_DDS(it,dds_create_topic(participant,&Input_desc,"Input",NULL,NULL),"create Input topic");
+    CREATE_DDS(pt,dds_create_topic(participant,&Position_desc,"Position",NULL,NULL),"create Position topic");
+    CREATE_DDS(at,dds_create_topic(participant,&GameAction_desc,"GameAction",NULL,NULL),"create GameAction topic");
+    CREATE_DDS(st,dds_create_topic(participant,&GameState_desc,"GameState",NULL,NULL),"create GameState topic");
+    CREATE_DDS(jw,dds_create_writer(participant,jt,rel_qos,NULL),"create JoinRequest writer");
+    CREATE_DDS(rr,dds_create_reader(participant,rt,rel_qos,NULL),"create JoinResponse reader");
+    CREATE_DDS(iw,dds_create_writer(participant,it,stream_qos,NULL),"create Input writer");
+    CREATE_DDS(pr,dds_create_reader(participant,pt,stream_qos,NULL),"create Position reader");
+    CREATE_DDS(aw,dds_create_writer(participant,at,rel_qos,NULL),"create GameAction writer");
+    CREATE_DDS(sr,dds_create_reader(participant,st,stream_qos,NULL),"create GameState reader");
+#undef CREATE_DDS
+    dds_delete_qos(stream_qos);stream_qos=NULL;
+    dds_delete_qos(rel_qos);rel_qos=NULL;
+    uint64_t last_network_log=monotonic_ms();
+    uint64_t last_join=0;
+    int local_id=0;
+    int running=1;
+    printf("DDS worker started (pid %ld, token %d)\n",(long)getpid(),app.token);
+    while(running){
+        int stop;
+        pthread_mutex_lock(&net.mutex);
+        stop=net.stop;
+        pthread_mutex_unlock(&net.mutex);
+        if(stop)break;
+
+        dds_return_t n;
+        dds_sample_info_t info[1];
+        JoinResponse resp={0};void *rs[1]={&resp};
+        for(int k=0;k<64;k++){
+            n=dds_take(rr,rs,info,1,1);
+            if(network_error(n,"take JoinResponse")){running=0;break;}
+            if(n==0)break;
+            if(info[0].valid_data && resp.int_client_token==app.token && !local_id){
+                if(resp.int_player_id>=1 && resp.int_player_id<=MAX_PLAYERS){
+                    local_id=resp.int_player_id;
+                    pthread_mutex_lock(&net.mutex);
+                    net.id=local_id;
+                    pthread_mutex_unlock(&net.mutex);
+                    printf("Joined as Player %d\n",local_id);
+                } else fprintf(stderr,"Join rejected: server full or invalid ID\n");
+            }
         }
-    }
-    Position pos={0};void *ps[1]={&pos};
-    for(int k=0;k<128;k++){
-        n=dds_take(app.position_reader,ps,info,1,1);CHECK(n);if(n==0)break;
-        int index=pos.int_player_id-1;
-        if(info[0].valid_data && index>=0 && index<MAX_PLAYERS &&
-           pos.int_x>=0 && pos.int_x<WIDTH && pos.int_y>=0 && pos.int_y<HEIGHT){
-            app.visible[index]=1;app.x[index]=pos.int_x;app.y[index]=pos.int_y;
+        if(!running)break;
+        Position pos={0};void *ps[1]={&pos};
+        for(int k=0;k<128;k++){
+            n=dds_take(pr,ps,info,1,1);
+            if(network_error(n,"take Position")){running=0;break;}
+            if(n==0)break;
+            int index=pos.int_player_id-1;
+            if(info[0].valid_data)atomic_fetch_add(&client_pos_rx,1);
+            if(info[0].valid_data && index>=0 && index<MAX_PLAYERS &&
+               pos.int_x>=0 && pos.int_x<WIDTH && pos.int_y>=0 && pos.int_y<HEIGHT){
+                pthread_mutex_lock(&net.mutex);
+                net.visible[index]=1;net.x[index]=pos.int_x;net.y[index]=pos.int_y;
+                pthread_mutex_unlock(&net.mutex);
+            }
         }
+        if(!running)break;
+        GameState state={0};void *ss[1]={&state};
+        for(int k=0;k<64;k++){
+            n=dds_take(sr,ss,info,1,1);
+            if(network_error(n,"take GameState")){running=0;break;}
+            if(n==0)break;
+            if(info[0].valid_data){
+                atomic_fetch_add(&client_state_rx,1);
+                pthread_mutex_lock(&net.mutex);
+                net.state=state;net.known_state=1;
+                pthread_mutex_unlock(&net.mutex);
+            }
+        }
+        if(!running)break;
+        uint64_t now=dds_time();
+        if(!local_id && (!last_join || now-last_join>=DDS_MSECS(750))){
+            JoinRequest req={0};req.b_dummy=1;req.int_client_token=app.token;
+            if(network_error(dds_write(jw,&req),"write JoinRequest"))break;
+            atomic_fetch_add(&client_joins_tx,1);
+            last_join=now;
+        }
+        /* Drain queued input without holding mutex while calling DDS. */
+        char direction='n';
+        QueuedAction actions[ACTION_QUEUE_CAP];int n_actions=0;
+        pthread_mutex_lock(&net.mutex);
+        direction=net.next_direction;net.next_direction='n';
+        while(net.action_read!=net.action_write){
+            actions[n_actions++]=net.actions[net.action_read];
+            net.action_read=(net.action_read+1)%ACTION_QUEUE_CAP;
+        }
+        pthread_mutex_unlock(&net.mutex);
+        if(local_id){
+            if(direction!='n'){
+                Input in={0};in.int_player_id=local_id;
+                in.int_client_token=app.token;in.ch_direction=direction;
+                if(network_error(dds_write(iw,&in),"write Input"))break;
+                atomic_fetch_add(&client_move_tx,1);
+            }
+            for(int i=0;i<n_actions;i++){
+                GameAction a={0};a.int_player_id=local_id;
+                a.int_client_token=app.token;
+                a.int_action=actions[i].code;
+                a.int_session=actions[i].session;
+                if(network_error(dds_write(aw,&a),"write GameAction")){running=0;break;}
+            }
+        }
+        if(!running)break;
+        if(monotonic_ms()-last_network_log>=2000){
+            printf("[client %d DDS] alive: joinsSent=%lu movesSent=%lu posRX=%lu stateRX=%lu\n",
+                (int)getpid(),(unsigned long)atomic_load(&client_joins_tx),
+                (unsigned long)atomic_load(&client_move_tx),
+                (unsigned long)atomic_load(&client_pos_rx),
+                (unsigned long)atomic_load(&client_state_rx));
+            last_network_log=monotonic_ms();
+        }
+        dds_sleepfor(DDS_MSECS(5));
     }
-    GameState state={0};void *ss[1]={&state};
-    for(int k=0;k<64;k++){
-        n=dds_take(app.state_reader,ss,info,1,1);CHECK(n);if(n==0)break;
-        if(info[0].valid_data)receive_state(&state);
-    }
+dds_cleanup:
+    if(stream_qos)dds_delete_qos(stream_qos);
+    if(rel_qos)dds_delete_qos(rel_qos);
+    dds_delete(participant);
+    fprintf(stderr,"DDS worker stopped\n");
+    return NULL;
 }
 static int can_trace(void){
     return app.known_state && app.id>0 && app.state.int_actor==app.id &&
@@ -290,55 +471,69 @@ static void handle_keys(GLFWwindow *w){
     }
     app.prev_e=e;app.prev_q=q;
     if(app.id==0 || !app.known_state || app.state.int_phase!=PHASE_COLLECT)return;
-    uint64_t now=dds_time();
-    if(now-app.last_input < DDS_MSECS(28))return;
+    double now=glfwGetTime();
+    if(now-app.last_input_time < 0.028)return;
     char d='n';
     if(glfwGetKey(w,GLFW_KEY_W)==GLFW_PRESS || glfwGetKey(w,GLFW_KEY_UP)==GLFW_PRESS)d='u';
     else if(glfwGetKey(w,GLFW_KEY_S)==GLFW_PRESS || glfwGetKey(w,GLFW_KEY_DOWN)==GLFW_PRESS)d='d';
     else if(glfwGetKey(w,GLFW_KEY_A)==GLFW_PRESS || glfwGetKey(w,GLFW_KEY_LEFT)==GLFW_PRESS)d='l';
     else if(glfwGetKey(w,GLFW_KEY_D)==GLFW_PRESS || glfwGetKey(w,GLFW_KEY_RIGHT)==GLFW_PRESS)d='r';
-    if(d!='n'){send_input(d);app.last_input=now;}
+    if(d!='n'){send_input(d);app.last_input_time=now;}
 }
 int main(void){
+    setvbuf(stdout,NULL,_IONBF,0);
+    setvbuf(stderr,NULL,_IONBF,0);
     memset(&app,0,sizeof(app));
     app.token=(int)((((uint32_t)getpid()<<15) ^ (uint32_t)time(NULL))&0x7fffffff);
     if(app.token==0)app.token=1;
     app.shown_phase=-1;
-    app.participant=dds_create_participant(DDS_DOMAIN_DEFAULT,NULL,NULL);CHECK(app.participant);
-    dds_entity_t jt=topic(app.participant,&JoinRequest_desc,"JoinRequest");
-    dds_entity_t rt=topic(app.participant,&JoinResponse_desc,"JoinResponse");
-    dds_entity_t it=topic(app.participant,&Input_desc,"Input");
-    dds_entity_t pt=topic(app.participant,&Position_desc,"Position");
-    dds_entity_t at=topic(app.participant,&GameAction_desc,"GameAction");
-    dds_entity_t st=topic(app.participant,&GameState_desc,"GameState");
-    app.join_writer=writer(app.participant,jt);
-    app.response_reader=reader(app.participant,rt);
-    app.input_writer=writer(app.participant,it);
-    app.position_reader=reader(app.participant,pt);
-    app.action_writer=writer(app.participant,at);
-    app.state_reader=reader(app.participant,st);
     if(!glfwInit()){fprintf(stderr,"GLFW init failed\n");return 1;}
     GLFWwindow *w=glfwCreateWindow(WIDTH,HEIGHT,"The Gingerbread Curse - DDS",NULL,NULL);
     if(!w){glfwTerminate();return 1;}
-    glfwMakeContextCurrent(w);glfwSwapInterval(1);
+    glfwMakeContextCurrent(w);glfwSwapInterval(0); /* avoid multi-window vsync stalls */
     glfwSetWindowSizeLimits(w,WIDTH,HEIGHT,WIDTH,HEIGHT);
     glfwSetMouseButtonCallback(w,mouse_button);
     glfwSetCursorPosCallback(w,cursor_move);
     int fbw,fbh;glfwGetFramebufferSize(w,&fbw,&fbh);glViewport(0,0,fbw,fbh);
     glMatrixMode(GL_PROJECTION);glLoadIdentity();glOrtho(0,WIDTH,HEIGHT,0,-1,1);
     glMatrixMode(GL_MODELVIEW);
+    if(pthread_create(&net.thread,NULL,network_worker,NULL)!=0){
+        perror("pthread_create network_worker");glfwDestroyWindow(w);glfwTerminate();return 1;
+    }
+    uint64_t last_main_log=monotonic_ms();
+    unsigned long main_frames=0;
+    const struct timespec frame_pause={.tv_sec=0,.tv_nsec=16000000L};
     while(!glfwWindowShouldClose(w)){
-        glfwPollEvents();network_poll();
-        uint64_t now=dds_time();
-        if(!app.id && (!app.last_join || now-app.last_join>=DDS_MSECS(750))){
-            send_join();app.last_join=now;
-        }
+        uint64_t frame_started=monotonic_ms();
+        glfwPollEvents();network_snapshot();
         handle_keys(w);
         glClearColor(.15f,.12f,.22f,1);glClear(GL_COLOR_BUFFER_BIT);
         glLoadIdentity();draw_scene();draw_trace();
+        if(app.network_failed){
+            rect(12,558,775,38,.67f,.08f,.12f,1);
+            draw_text(18,570,1.28f,app.network_error,1,1,1);
+        }
         glfwSwapBuffers(w);
+        main_frames++;
+        uint64_t frame_finished=monotonic_ms();
+        if(frame_finished-frame_started>200)
+            fprintf(stderr,"[client %d MAIN] SLOW FRAME %llu ms (poll+draw+swap)\n",
+                (int)getpid(),(unsigned long long)(frame_finished-frame_started));
+        if(frame_finished-last_main_log>=2000){
+            printf("[client %d MAIN] alive: frames=%lu id=%d known=%d phase=%d rev=%d posRX=%lu stateRX=%lu\n",
+                (int)getpid(),main_frames,app.id,app.known_state,
+                app.known_state?app.state.int_phase:-1,
+                app.known_state?app.state.int_revision:-1,
+                (unsigned long)atomic_load(&client_pos_rx),
+                (unsigned long)atomic_load(&client_state_rx));
+            last_main_log=frame_finished;
+        }
+        /* With vsync disabled, cap the GLFW main loop near 60 FPS. */
+        nanosleep(&frame_pause,NULL);
     }
+    /* Exit safely: network worker stops before GLFW/OpenGL teardown. */
+    pthread_mutex_lock(&net.mutex);net.stop=1;pthread_mutex_unlock(&net.mutex);
+    pthread_join(net.thread,NULL);
     render_cleanup();glfwDestroyWindow(w);glfwTerminate();
-    dds_delete(app.participant);
     return 0;
 }

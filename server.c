@@ -1,91 +1,233 @@
-/* Extended from the user's original Cyclone DDS server.c.
-   Retains JoinRequest/JoinResponse/Input/Position topics, player squares,
-   collision logic and server-authoritative movement. Adds GameAction/GameState.
-   The original crash-prone player array indexing is validated in GameRules.c. */
+/* The Gingerbread Curse — ORIGINAL DDS architecture, as specified by slides.
+ * Server MAIN: sole writer of authoritative GameRules (joins/movement/rules).
+ * Server DDS WORKER: owns DDS entities, receives requests and publishes copies.
+ * Mutex-protected request/response queues + state snapshot join the threads.
+ * No DDS call occurs while the bridge mutex is locked.
+ */
+#define _POSIX_C_SOURCE 200809L
+#include <dds/dds.h>
+#include <pthread.h>
+#include <stdatomic.h>
+#include <signal.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
-#include <pthread.h>
-#include <dds/dds.h>
+#include <time.h>
 #include "messages.h"
 #include "GameRules.h"
+#include "ServerBridge.h"
 
-#define CHECK(x) do {dds_return_t rc_=(x); if(rc_<0){ \
-    fprintf(stderr,"DDS failure %s: %s\n",#x,dds_strretcode(-rc_));exit(1);}}while(0)
-static dds_entity_t topic(dds_entity_t participant,const dds_topic_descriptor_t *desc,const char *name){
-    dds_entity_t t=dds_create_topic(participant,desc,name,NULL,NULL);
-    if(t<0){fprintf(stderr,"Topic %s failed: %s\n",name,dds_strretcode(-t));exit(1);}return t;
+static ServerBridge bridge;
+static volatile sig_atomic_t quitting=0;
+static atomic_ulong server_join_rx=0, server_input_rx=0, server_action_rx=0;
+static atomic_ulong server_pos_tx=0, server_state_tx=0;
+static uint64_t dds_monotonic_ms(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec*1000u+(uint64_t)ts.tv_nsec/1000000u;
 }
-static dds_entity_t reader(dds_entity_t p,dds_entity_t t){dds_entity_t e=dds_create_reader(p,t,NULL,NULL);CHECK(e);return e;}
-static dds_entity_t writer(dds_entity_t p,dds_entity_t t){dds_entity_t e=dds_create_writer(p,t,NULL,NULL);CHECK(e);return e;}
-static void send_positions(GameRules *g,dds_entity_t w){
-    for(int i=0;i<MAX_PLAYERS;i++)if(g->players[i].b_active){
-        Position pos={0};pos.int_player_id=i+1;
-        pos.int_x=g->players[i].x;pos.int_y=g->players[i].y;
-        CHECK(dds_write(w,&pos));
+static dds_qos_t *qos_best_effort(void) {
+    dds_qos_t *q=dds_create_qos();
+    if(!q)return NULL;
+    dds_qset_reliability(q,DDS_RELIABILITY_BEST_EFFORT,DDS_MSECS(20));
+    dds_qset_history(q,DDS_HISTORY_KEEP_LAST,8);
+    return q;
+}
+static dds_qos_t *qos_reliable(void) {
+    dds_qos_t *q=dds_create_qos();
+    if(!q)return NULL;
+    dds_qset_reliability(q,DDS_RELIABILITY_RELIABLE,DDS_MSECS(100));
+    dds_qset_history(q,DDS_HISTORY_KEEP_LAST,16);
+    return q;
+}
+
+static void on_signal(int sig){(void)sig;quitting=1;}
+
+/* Only called by the DDS worker.  A DDS error exits that worker gracefully. */
+static int dds_ok(dds_return_t rc,const char *label){
+    if(rc>=0)return 1;
+    fprintf(stderr,"[server DDS] %s failed: %s (%d)\n",
+            label,dds_strretcode(-rc),(int)rc);
+    server_bridge_set_stop(&bridge,1);
+    return 0;
+}
+#define CREATE_DDS(v, expr, label) do { \
+    (v)=(expr);if(!dds_ok((v),(label)))goto cleanup; \
+}while(0)
+
+static void *dds_worker(void *arg){
+    (void)arg;
+    dds_entity_t p=dds_create_participant(DDS_DOMAIN_DEFAULT,NULL,NULL);
+    if(!dds_ok(p,"create participant"))return NULL;
+    dds_entity_t jt,rt,it,pt,at,st,jr,ir,ar,rw,pw,sw;
+    dds_qos_t *stream_qos=qos_best_effort(),*reliable_qos=qos_reliable();
+    if(!stream_qos || !reliable_qos){
+        fprintf(stderr,"[server DDS] QoS allocation failed\n");
+        server_bridge_set_stop(&bridge,1);goto cleanup;
     }
-}
-static void send_game(GameRules *g,dds_entity_t w){
-    GameState s={0};
-    s.int_phase=g->phase;s.int_stage=g->stage;s.int_actor=g->actor;
-    s.int_mistakes=g->mistakes;s.int_held1=g->held[0];s.int_held2=g->held[1];
-    s.int_session=g->session;s.int_revision=g->revision;s.int_num_players=g->num_players;
-    CHECK(dds_write(w,&s));
-}
-static void *worker(void *unused){
-    (void)unused;
-    GameRules game;game_init(&game);
-    dds_entity_t p=dds_create_participant(DDS_DOMAIN_DEFAULT,NULL,NULL);CHECK(p);
-    dds_entity_t jt=topic(p,&JoinRequest_desc,"JoinRequest");
-    dds_entity_t rt=topic(p,&JoinResponse_desc,"JoinResponse");
-    dds_entity_t it=topic(p,&Input_desc,"Input");
-    dds_entity_t pt=topic(p,&Position_desc,"Position");
-    dds_entity_t at=topic(p,&GameAction_desc,"GameAction");
-    dds_entity_t st=topic(p,&GameState_desc,"GameState");
-    dds_entity_t jr=reader(p,jt),ir=reader(p,it),ar=reader(p,at);
-    dds_entity_t rw=writer(p,rt),pw=writer(p,pt),sw=writer(p,st);
-    uint64_t last_update=dds_time();int last_revision=-1;
-    printf("Original DDS server + Gingerbread game started. Waiting for two clients...\n");
-    for(;;){
-        dds_return_t rc;
-        JoinRequest join={0};void *js[1]={&join};dds_sample_info_t ji[1];
-        for(int n=0;n<32;n++){
-            rc=dds_take(jr,js,ji,1,1);CHECK(rc);if(rc==0)break;
-            if(!ji[0].valid_data)continue;
-            int id=game_join(&game,join.int_client_token);
-            JoinResponse response={0};response.int_player_id=id;
-            response.int_client_token=join.int_client_token;
-            CHECK(dds_write(rw,&response));
-            if(id)printf("Join token %d -> player %d\n",(int)join.int_client_token,id);
+    CREATE_DDS(jt,dds_create_topic(p,&JoinRequest_desc,"JoinRequest",NULL,NULL),"JoinRequest topic");
+    CREATE_DDS(rt,dds_create_topic(p,&JoinResponse_desc,"JoinResponse",NULL,NULL),"JoinResponse topic");
+    CREATE_DDS(it,dds_create_topic(p,&Input_desc,"Input",NULL,NULL),"Input topic");
+    CREATE_DDS(pt,dds_create_topic(p,&Position_desc,"Position",NULL,NULL),"Position topic");
+    CREATE_DDS(at,dds_create_topic(p,&GameAction_desc,"GameAction",NULL,NULL),"GameAction topic");
+    CREATE_DDS(st,dds_create_topic(p,&GameState_desc,"GameState",NULL,NULL),"GameState topic");
+    CREATE_DDS(jr,dds_create_reader(p,jt,reliable_qos,NULL),"JoinRequest reader");
+    CREATE_DDS(ir,dds_create_reader(p,it,stream_qos,NULL),"Input reader");
+    CREATE_DDS(ar,dds_create_reader(p,at,reliable_qos,NULL),"GameAction reader");
+    CREATE_DDS(rw,dds_create_writer(p,rt,reliable_qos,NULL),"JoinResponse writer");
+    CREATE_DDS(pw,dds_create_writer(p,pt,stream_qos,NULL),"Position writer");
+    CREATE_DDS(sw,dds_create_writer(p,st,stream_qos,NULL),"GameState writer");
+
+    dds_delete_qos(stream_qos);stream_qos=NULL;
+    dds_delete_qos(reliable_qos);reliable_qos=NULL;
+    uint64_t last_diagnostic=dds_monotonic_ms();
+    uint64_t last_publish=0;
+    int last_revision=-1;
+    printf("[server DDS worker] running\n");
+    while(!server_bridge_should_stop(&bridge)){
+        dds_return_t n;
+        dds_sample_info_t info[1];
+        JoinRequest j={0};void *js[1]={&j};
+        for(int k=0;k<32;k++){
+            n=dds_take(jr,js,info,1,1);
+            if(!dds_ok(n,"read JoinRequest"))goto cleanup;
+            if(n==0)break;
+            if(info[0].valid_data && j.int_client_token>0 &&
+               (atomic_fetch_add(&server_join_rx,1),1) &&
+               !server_bridge_push_event(&bridge,(ServerEvent){
+                   .type=SERVER_JOIN,.token=j.int_client_token}))
+                fprintf(stderr,"[server DDS] join queue full\n");
         }
-        Input in={0};void *is[1]={&in};dds_sample_info_t ii[1];
-        for(int n=0;n<128;n++){
-            rc=dds_take(ir,is,ii,1,1);CHECK(rc);if(rc==0)break;
-            if(ii[0].valid_data)game_move(&game,in.int_player_id,in.int_client_token,in.ch_direction);
+        Input in={0};void *is[1]={&in};
+        for(int k=0;k<128;k++){
+            n=dds_take(ir,is,info,1,1);
+            if(!dds_ok(n,"read Input"))goto cleanup;
+            if(n==0)break;
+            if(info[0].valid_data && (atomic_fetch_add(&server_input_rx,1),1) &&
+               !server_bridge_push_event(&bridge,(ServerEvent){
+                .type=SERVER_MOVE,.player_id=in.int_player_id,
+                .token=in.int_client_token,.direction=in.ch_direction}))
+                fprintf(stderr,"[server DDS] movement queue full\n");
         }
-        GameAction action={0};void *as[1]={&action};dds_sample_info_t ai[1];
-        for(int n=0;n<32;n++){
-            rc=dds_take(ar,as,ai,1,1);CHECK(rc);if(rc==0)break;
-            if(ai[0].valid_data)
-                game_action(&game,action.int_player_id,action.int_client_token,
-                            action.int_action,action.int_session);
+        GameAction a={0};void *as[1]={&a};
+        for(int k=0;k<32;k++){
+            n=dds_take(ar,as,info,1,1);
+            if(!dds_ok(n,"read GameAction"))goto cleanup;
+            if(n==0)break;
+            if(info[0].valid_data && (atomic_fetch_add(&server_action_rx,1),1) &&
+               !server_bridge_push_event(&bridge,(ServerEvent){
+                .type=SERVER_ACTION,.player_id=a.int_player_id,
+                .token=a.int_client_token,.action=a.int_action,.session=a.int_session}))
+                fprintf(stderr,"[server DDS] action queue full\n");
         }
+        ServerJoinReply reply;
+        for(int k=0;k<64 && server_bridge_pop_reply(&bridge,&reply);k++){
+            JoinResponse r={0};
+            r.int_client_token=reply.token;r.int_player_id=reply.player_id;
+            if(!dds_ok(dds_write(rw,&r),"write JoinResponse"))goto cleanup;
+        }
+        GameRules snapshot;
+        server_bridge_snapshot(&bridge,&snapshot); /* lock only for copy */
         uint64_t now=dds_time();
-        if(now-last_update>=DDS_MSECS(60)){
-            last_update=now;
-            send_positions(&game,pw);
-            send_game(&game,sw);
-            last_revision=game.revision;
-        }else if(game.revision!=last_revision){
-            send_game(&game,sw);last_revision=game.revision;
+        if(!last_publish || now-last_publish>=DDS_MSECS(40) ||
+           last_revision!=snapshot.revision){
+            for(int i=0;i<MAX_PLAYERS;i++)if(snapshot.players[i].b_active){
+                Position pos={0};pos.int_player_id=i+1;
+                pos.int_x=snapshot.players[i].x;
+                pos.int_y=snapshot.players[i].y;
+                if(!dds_ok(dds_write(pw,&pos),"write Position"))goto cleanup;
+                atomic_fetch_add(&server_pos_tx,1);
+            }
+            GameState s={0};
+            s.int_phase=snapshot.phase;s.int_stage=snapshot.stage;
+            s.int_actor=snapshot.actor;s.int_mistakes=snapshot.mistakes;
+            s.int_held1=snapshot.held[0];s.int_held2=snapshot.held[1];
+            s.int_session=snapshot.session;s.int_revision=snapshot.revision;
+            s.int_num_players=snapshot.num_players;
+            if(!dds_ok(dds_write(sw,&s),"write GameState"))goto cleanup;
+            atomic_fetch_add(&server_state_tx,1);
+            last_publish=now;
+            last_revision=snapshot.revision;
+        }
+        if(dds_monotonic_ms()-last_diagnostic>=2000){
+            printf("[server DDS] alive: joins=%lu inputs=%lu actions=%lu posTx=%lu stateTx=%lu\n",
+                (unsigned long)atomic_load(&server_join_rx),
+                (unsigned long)atomic_load(&server_input_rx),
+                (unsigned long)atomic_load(&server_action_rx),
+                (unsigned long)atomic_load(&server_pos_tx),
+                (unsigned long)atomic_load(&server_state_tx));
+            last_diagnostic=dds_monotonic_ms();
         }
         dds_sleepfor(DDS_MSECS(5));
     }
+cleanup:
+    if(stream_qos)dds_delete_qos(stream_qos);
+    if(reliable_qos)dds_delete_qos(reliable_qos);
+    dds_delete(p); /* all child entities deleted with their participant */
+    printf("[server DDS worker] stopped\n");
     return NULL;
 }
+
+static void process_event(GameRules *g,const ServerEvent *e){
+    if(e->type==SERVER_JOIN){
+        int id=game_join(g,e->token);
+        if(!server_bridge_push_reply(&bridge,(ServerJoinReply){
+            .token=e->token,.player_id=id}))
+            fprintf(stderr,"[server main] join reply queue full\n");
+        if(id)printf("[server main] token %d -> player %d\n",e->token,id);
+    }else if(e->type==SERVER_MOVE){
+        game_move(g,e->player_id,e->token,e->direction);
+    }else if(e->type==SERVER_ACTION){
+        game_action(g,e->player_id,e->token,e->action,e->session);
+    }
+}
+
 int main(void){
-    pthread_t thread;
-    if(pthread_create(&thread,NULL,worker,NULL)!=0){perror("pthread_create");return 1;}
-    pthread_join(thread,NULL);
-    return 0;
+    setvbuf(stdout,NULL,_IONBF,0);
+    setvbuf(stderr,NULL,_IONBF,0);
+    signal(SIGINT,on_signal);
+    signal(SIGTERM,on_signal);
+    GameRules game;
+    game_init(&game);
+    if(!server_bridge_init(&bridge,&game)){
+        fprintf(stderr,"Could not initialize server mutex\n");return EXIT_FAILURE;
+    }
+    pthread_t network_thread;
+    if(pthread_create(&network_thread,NULL,dds_worker,NULL)!=0){
+        perror("pthread_create(dds_worker)");
+        server_bridge_destroy(&bridge);return EXIT_FAILURE;
+    }
+    printf("[server main] Game state loop running (authoritative owner)\n");
+    /* ~60 game ticks per second. Main thread performs ALL game state writes.
+     * DDS worker NEVER calls game_join/move/action, only queues events. */
+    const struct timespec step={.tv_sec=0,.tv_nsec=16000000L};
+    uint64_t last_main_log=dds_monotonic_ms();
+    unsigned long main_ticks=0;
+    while(!quitting && !server_bridge_should_stop(&bridge)){
+        ServerEvent event;
+        for(int k=0;k<1024 && server_bridge_pop_event(&bridge,&event);k++)
+            process_event(&game,&event);
+        server_bridge_publish(&bridge,&game);
+        main_ticks++;
+        uint64_t now_ms=dds_monotonic_ms();
+        if(now_ms-last_main_log>=2000){
+            pthread_mutex_lock(&bridge.mutex);
+            unsigned long dropped=bridge.dropped_events;
+            unsigned queue=(bridge.event_write+SERVER_EVENT_CAP-bridge.event_read)%SERVER_EVENT_CAP;
+            pthread_mutex_unlock(&bridge.mutex);
+            printf("[server MAIN] alive: ticks=%lu players=%d stage=%d phase=%d rev=%d queued=%u dropped=%lu\n",
+                main_ticks,game.num_players,game.stage,game.phase,game.revision,queue,dropped);
+            last_main_log=now_ms;
+        }
+        nanosleep(&step,NULL);
+    }
+    int failed;
+    pthread_mutex_lock(&bridge.mutex);
+    failed=bridge.failed;
+    pthread_mutex_unlock(&bridge.mutex);
+    server_bridge_set_stop(&bridge,0);
+    pthread_join(network_thread,NULL);
+    server_bridge_destroy(&bridge);
+    printf("[server main] stopped\n");
+    return failed?EXIT_FAILURE:EXIT_SUCCESS;
 }

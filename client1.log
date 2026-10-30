@@ -1,0 +1,190 @@
+DDS worker started (pid 179, token 1790774701)
+Joined as Player 1
+[client 179 DDS] alive: joinsSent=2 movesSent=0 posRX=30 stateRX=48
+[client 179 MAIN] alive: frames=88 id=1 known=1 phase=0 rev=1 posRX=30 stateRX=48
+[client 179 DDS] alive: joinsSent=2 movesSent=0 posRX=78 stateRX=96
+[client 179 MAIN] alive: frames=180 id=1 known=1 phase=0 rev=1 posRX=78 stateRX=96
+[client 179 DDS] alive: joinsSent=2 movesSent=0 posRX=125 stateRX=143
+[client 179 MAIN] alive: frames=269 id=1 known=1 phase=0 rev=1 posRX=126 stateRX=144
+[client 179 DDS] alive: joinsSent=2 movesSent=0 posRX=173 stateRX=191
+[client 179 MAIN] alive: frames=361 id=1 known=1 phase=0 rev=1 posRX=174 stateRX=192
+[client 179 DDS] alive: joinsSent=2 movesSent=0 posRX=260 stateRX=240
+[client 179 MAIN] alive: frames=451 id=1 known=1 phase=0 rev=2 posRX=262 stateRX=241
+[client 179 DDS] alive: joinsSent=2 movesSent=0 posRX=356 stateRX=288
+[client 179 MAIN] alive: frames=540 id=1 known=1 phase=0 rev=2 posRX=358 stateRX=289
+[client 179 DDS] alive: joinsSent=2 movesSent=0 posRX=452 stateRX=336
+[client 179 MAIN] alive: frames=630 id=1 known=1 phase=0 rev=2 posRX=454 stateRX=337
+[client 179 DDS] alive: joinsSent=2 movesSent=0 posRX=548 stateRX=384
+[client 179 MAIN] alive: frames=722 id=1 known=1 phase=0 rev=2 posRX=550 stateRX=385
+[client 179 DDS] alive: joinsSent=2 movesSent=0 posRX=644 stateRX=432
+[client 179 MAIN] alive: frames=812 id=1 known=1 phase=0 rev=2 posRX=648 stateRX=434
+[client 179 DDS] alive: joinsSent=2 movesSent=0 posRX=740 stateRX=480
+[client 179 MAIN] alive: frames=902 id=1 known=1 phase=0 rev=2 posRX=742 stateRX=481
+[client 179 DDS] alive: joinsSent=2 movesSent=0 posRX=836 stateRX=528
+[client 179 MAIN] alive: frames=993 id=1 known=1 phase=0 rev=2 posRX=840 stateRX=530
+[client 179 DDS] alive: joinsSent=2 movesSent=0 posRX=932 stateRX=576
+[client 179 MAIN] alive: frames=1081 id=1 known=1 phase=0 rev=2 posRX=936 stateRX=578
+[client 179 DDS] alive: joinsSent=2 movesSent=0 posRX=1028 stateRX=624
+[client 179 MAIN] alive: frames=1171 id=1 known=1 phase=0 rev=2 posRX=1032 stateRX=626
+[client 179 DDS] alive: joinsSent=2 movesSent=0 posRX=1124 stateRX=672
+[client 179 MAIN] alive: frames=1255 id=1 known=1 phase=0 rev=2 posRX=1128 stateRX=674
+[client 179 DDS] alive: joinsSent=2 movesSent=0 posRX=1220 stateRX=720
+[client 179 MAIN] alive: frames=1346 id=1 known=1 phase=0 rev=2 posRX=1226 stateRX=723
+[client 179 DDS] alive: joinsSent=2 movesSent=0 posRX=1316 stateRX=768
+[client 179 MAIN] alive: frames=1438 id=1 known=1 phase=0 rev=2 posRX=1322 stateRX=771
+[client 179 DDS] alive: joinsSent=2 movesSent=0 posRX=1412 stateRX=816
+[client 179 MAIN] alive: frames=1529 id=1 known=1 phase=0 rev=2 posRX=1418 stateRX=819
+[client 179 DDS] alive: joinsSent=2 movesSent=0 posRX=1508 stateRX=864
+[client 179 MAIN] alive: frames=1620 id=1 known=1 phase=0 rev=2 posRX=1514 stateRX=867
+[client 179 DDS] alive: joinsSent=2 movesSent=11 posRX=1606 stateRX=913
+[client 179 MAIN] alive: frames=1712 id=1 known=1 phase=0 rev=2 posRX=1612 stateRX=916
+[client 179 DDS] alive: joinsSent=2 movesSent=39 posRX=1702 stateRX=961
+[client 179 MAIN] alive: frames=1803 id=1 known=1 phase=0 rev=2 posRX=1708 stateRX=964
+[client 179 DDS] alive: joinsSent=2 movesSent=58 posRX=1798 stateRX=1009
+[client 179 MAIN] alive: frames=1894 id=1 known=1 phase=0 rev=2 posRX=1806 stateRX=1013
+[client 179 DDS] alive: joinsSent=2 movesSent=100 posRX=1894 stateRX=1057
+[client 179 MAIN] alive: frames=1987 id=1 known=1 phase=0 rev=2 posRX=1902 stateRX=1061
+[client 179 DDS] alive: joinsSent=2 movesSent=117 posRX=1990 stateRX=1105
+[client 179 MAIN] alive: frames=2080 id=1 known=1 phase=0 rev=2 posRX=1998 stateRX=1109
+[client 179 DDS] alive: joinsSent=2 movesSent=117 posRX=2084 stateRX=1152
+[client 179 MAIN] alive: frames=2173 id=1 known=1 phase=0 rev=2 posRX=2094 stateRX=1157
+[client 179 DDS] alive: joinsSent=2 movesSent=117 posRX=2180 stateRX=1200
+[client 179 MAIN] alive: frames=2265 id=1 known=1 phase=0 rev=2 posRX=2190 stateRX=1205
+[client 179 DDS] alive: joinsSent=2 movesSent=125 posRX=2276 stateRX=1248
+[client 179 MAIN] alive: frames=2357 id=1 known=1 phase=0 rev=2 posRX=2286 stateRX=1253
+[client 179 DDS] alive: joinsSent=2 movesSent=146 posRX=2374 stateRX=1297
+[client 179 MAIN] alive: frames=2449 id=1 known=1 phase=0 rev=3 posRX=2384 stateRX=1302
+[client 179 DDS] alive: joinsSent=2 movesSent=185 posRX=2468 stateRX=1344
+[client 179 MAIN] alive: frames=2542 id=1 known=1 phase=0 rev=3 posRX=2480 stateRX=1350
+[client 179 DDS] alive: joinsSent=2 movesSent=190 posRX=2564 stateRX=1392
+[client 179 MAIN] alive: frames=2635 id=1 known=1 phase=0 rev=3 posRX=2576 stateRX=1398
+[client 179 DDS] alive: joinsSent=2 movesSent=192 posRX=2660 stateRX=1440
+[client 179 MAIN] alive: frames=2727 id=1 known=1 phase=0 rev=3 posRX=2672 stateRX=1446
+[client 179 DDS] alive: joinsSent=2 movesSent=217 posRX=2756 stateRX=1488
+[client 179 MAIN] alive: frames=2819 id=1 known=1 phase=0 rev=3 posRX=2768 stateRX=1494
+[client 179 DDS] alive: joinsSent=2 movesSent=225 posRX=2852 stateRX=1536
+[client 179 MAIN] alive: frames=2910 id=1 known=1 phase=0 rev=3 posRX=2864 stateRX=1542
+[client 179 DDS] alive: joinsSent=2 movesSent=225 posRX=2948 stateRX=1584
+[client 179 MAIN] alive: frames=3002 id=1 known=1 phase=0 rev=3 posRX=2960 stateRX=1590
+[client 179 DDS] alive: joinsSent=2 movesSent=225 posRX=3042 stateRX=1631
+[client 179 MAIN] alive: frames=3094 id=1 known=1 phase=0 rev=3 posRX=3058 stateRX=1639
+[client 179 DDS] alive: joinsSent=2 movesSent=225 posRX=3138 stateRX=1679
+[client 179 MAIN] alive: frames=3186 id=1 known=1 phase=0 rev=3 posRX=3154 stateRX=1687
+[client 179 DDS] alive: joinsSent=2 movesSent=233 posRX=3234 stateRX=1727
+[client 179 MAIN] alive: frames=3277 id=1 known=1 phase=0 rev=3 posRX=3250 stateRX=1735
+[client 179 DDS] alive: joinsSent=2 movesSent=233 posRX=3330 stateRX=1775
+[client 179 MAIN] alive: frames=3369 id=1 known=1 phase=0 rev=4 posRX=3346 stateRX=1783
+[client 179 DDS] alive: joinsSent=2 movesSent=248 posRX=3428 stateRX=1824
+[client 179 MAIN] alive: frames=3462 id=1 known=1 phase=0 rev=4 posRX=3444 stateRX=1832
+[client 179 DDS] alive: joinsSent=2 movesSent=269 posRX=3524 stateRX=1872
+[client 179 MAIN] alive: frames=3555 id=1 known=1 phase=0 rev=4 posRX=3540 stateRX=1880
+[client 179 DDS] alive: joinsSent=2 movesSent=301 posRX=3620 stateRX=1920
+[client 179 MAIN] alive: frames=3647 id=1 known=1 phase=0 rev=4 posRX=3636 stateRX=1928
+[client 179 DDS] alive: joinsSent=2 movesSent=317 posRX=3716 stateRX=1968
+[client 179 MAIN] alive: frames=3740 id=1 known=1 phase=0 rev=4 posRX=3734 stateRX=1977
+[client 179 DDS] alive: joinsSent=2 movesSent=317 posRX=3812 stateRX=2016
+[client 179 MAIN] alive: frames=3832 id=1 known=1 phase=0 rev=4 posRX=3830 stateRX=2025
+[client 179 DDS] alive: joinsSent=2 movesSent=318 posRX=3908 stateRX=2064
+[client 179 MAIN] alive: frames=3925 id=1 known=1 phase=0 rev=4 posRX=3928 stateRX=2074
+[client 179 DDS] alive: joinsSent=2 movesSent=326 posRX=4006 stateRX=2113
+[client 179 MAIN] alive: frames=4012 id=1 known=1 phase=0 rev=5 posRX=4024 stateRX=2122
+[client 179 DDS] alive: joinsSent=2 movesSent=364 posRX=4102 stateRX=2161
+[client 179 MAIN] alive: frames=4104 id=1 known=1 phase=0 rev=5 posRX=4122 stateRX=2171
+[client 179 DDS] alive: joinsSent=2 movesSent=406 posRX=4198 stateRX=2209
+[client 179 MAIN] alive: frames=4197 id=1 known=1 phase=0 rev=5 posRX=4218 stateRX=2219
+[client 179 DDS] alive: joinsSent=2 movesSent=418 posRX=4294 stateRX=2257
+[client 179 MAIN] alive: frames=4289 id=1 known=1 phase=0 rev=5 posRX=4314 stateRX=2267
+[client 179 DDS] alive: joinsSent=2 movesSent=422 posRX=4390 stateRX=2305
+[client 179 MAIN] alive: frames=4382 id=1 known=1 phase=0 rev=5 posRX=4412 stateRX=2316
+[client 179 DDS] alive: joinsSent=2 movesSent=426 posRX=4488 stateRX=2354
+[client 179 MAIN] alive: frames=4474 id=1 known=1 phase=0 rev=5 posRX=4508 stateRX=2364
+[client 179 DDS] alive: joinsSent=2 movesSent=426 posRX=4584 stateRX=2402
+[client 179 MAIN] alive: frames=4567 id=1 known=1 phase=0 rev=6 posRX=4606 stateRX=2413
+[client 179 DDS] alive: joinsSent=2 movesSent=468 posRX=4680 stateRX=2450
+[client 179 MAIN] alive: frames=4659 id=1 known=1 phase=0 rev=6 posRX=4704 stateRX=2462
+[client 179 DDS] alive: joinsSent=2 movesSent=514 posRX=4776 stateRX=2498
+[client 179 MAIN] alive: frames=4751 id=1 known=1 phase=0 rev=6 posRX=4800 stateRX=2510
+[client 179 DDS] alive: joinsSent=2 movesSent=544 posRX=4874 stateRX=2547
+[client 179 MAIN] alive: frames=4844 id=1 known=1 phase=0 rev=7 posRX=4898 stateRX=2559
+[client 179 DDS] alive: joinsSent=2 movesSent=584 posRX=4970 stateRX=2595
+[client 179 MAIN] alive: frames=4937 id=1 known=1 phase=0 rev=7 posRX=4994 stateRX=2607
+[client 179 DDS] alive: joinsSent=2 movesSent=631 posRX=5066 stateRX=2643
+[client 179 MAIN] alive: frames=5029 id=1 known=1 phase=0 rev=7 posRX=5090 stateRX=2655
+[client 179 DDS] alive: joinsSent=2 movesSent=643 posRX=5162 stateRX=2691
+[client 179 MAIN] alive: frames=5121 id=1 known=1 phase=0 rev=7 posRX=5186 stateRX=2703
+[client 179 DDS] alive: joinsSent=2 movesSent=643 posRX=5258 stateRX=2739
+[client 179 MAIN] alive: frames=5215 id=1 known=1 phase=0 rev=7 posRX=5282 stateRX=2751
+[client 179 DDS] alive: joinsSent=2 movesSent=658 posRX=5354 stateRX=2787
+[client 179 MAIN] alive: frames=5309 id=1 known=1 phase=0 rev=7 posRX=5380 stateRX=2800
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=5452 stateRX=2836
+[client 179 MAIN] alive: frames=5402 id=1 known=1 phase=0 rev=7 posRX=5476 stateRX=2848
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=5548 stateRX=2884
+[client 179 MAIN] alive: frames=5496 id=1 known=1 phase=0 rev=7 posRX=5572 stateRX=2896
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=5644 stateRX=2932
+[client 179 MAIN] alive: frames=5588 id=1 known=1 phase=0 rev=7 posRX=5668 stateRX=2944
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=5738 stateRX=2979
+[client 179 MAIN] alive: frames=5677 id=1 known=1 phase=1 rev=8 posRX=5766 stateRX=2993
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=5836 stateRX=3028
+[client 179 MAIN] alive: frames=5768 id=1 known=1 phase=1 rev=8 posRX=5862 stateRX=3041
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=5932 stateRX=3076
+[client 179 MAIN] alive: frames=5859 id=1 known=1 phase=1 rev=8 posRX=5958 stateRX=3089
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=6028 stateRX=3124
+[client 179 MAIN] alive: frames=5950 id=1 known=1 phase=1 rev=8 posRX=6056 stateRX=3138
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=6122 stateRX=3171
+[client 179 MAIN] alive: frames=6043 id=1 known=1 phase=1 rev=8 posRX=6152 stateRX=3186
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=6220 stateRX=3220
+[client 179 MAIN] alive: frames=6134 id=1 known=1 phase=1 rev=9 posRX=6250 stateRX=3235
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=6316 stateRX=3268
+[client 179 MAIN] alive: frames=6225 id=1 known=1 phase=1 rev=9 posRX=6346 stateRX=3283
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=6412 stateRX=3316
+[client 179 MAIN] alive: frames=6315 id=1 known=1 phase=1 rev=9 posRX=6442 stateRX=3331
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=6508 stateRX=3364
+[client 179 MAIN] alive: frames=6407 id=1 known=1 phase=1 rev=9 posRX=6540 stateRX=3380
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=6604 stateRX=3412
+[client 179 MAIN] alive: frames=6497 id=1 known=1 phase=1 rev=9 posRX=6636 stateRX=3428
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=6700 stateRX=3460
+[client 179 MAIN] alive: frames=6589 id=1 known=1 phase=1 rev=9 posRX=6734 stateRX=3477
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=6796 stateRX=3508
+[client 179 MAIN] alive: frames=6677 id=1 known=1 phase=1 rev=10 posRX=6830 stateRX=3525
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=6892 stateRX=3556
+[client 179 MAIN] alive: frames=6765 id=1 known=1 phase=1 rev=10 posRX=6926 stateRX=3573
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=6988 stateRX=3604
+[client 179 MAIN] alive: frames=6858 id=1 known=1 phase=1 rev=10 posRX=7022 stateRX=3621
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=7084 stateRX=3652
+[client 179 MAIN] alive: frames=6949 id=1 known=1 phase=1 rev=10 posRX=7118 stateRX=3669
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=7180 stateRX=3700
+[client 179 MAIN] alive: frames=7039 id=1 known=1 phase=1 rev=10 posRX=7214 stateRX=3717
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=7276 stateRX=3748
+[client 179 MAIN] alive: frames=7129 id=1 known=1 phase=1 rev=10 posRX=7310 stateRX=3765
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=7372 stateRX=3796
+[client 179 MAIN] alive: frames=7220 id=1 known=1 phase=1 rev=10 posRX=7406 stateRX=3813
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=7468 stateRX=3844
+[client 179 MAIN] alive: frames=7311 id=1 known=1 phase=1 rev=10 posRX=7504 stateRX=3862
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=7564 stateRX=3892
+[client 179 MAIN] alive: frames=7402 id=1 known=1 phase=1 rev=10 posRX=7600 stateRX=3910
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=7660 stateRX=3940
+[client 179 MAIN] alive: frames=7492 id=1 known=1 phase=1 rev=10 posRX=7696 stateRX=3958
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=7756 stateRX=3988
+[client 179 MAIN] alive: frames=7583 id=1 known=1 phase=1 rev=10 posRX=7792 stateRX=4006
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=7852 stateRX=4036
+[client 179 MAIN] alive: frames=7674 id=1 known=1 phase=1 rev=10 posRX=7890 stateRX=4055
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=7948 stateRX=4084
+[client 179 MAIN] alive: frames=7764 id=1 known=1 phase=1 rev=10 posRX=7986 stateRX=4103
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=8044 stateRX=4132
+[client 179 MAIN] alive: frames=7855 id=1 known=1 phase=1 rev=10 posRX=8082 stateRX=4151
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=8140 stateRX=4180
+[client 179 MAIN] alive: frames=7946 id=1 known=1 phase=1 rev=10 posRX=8178 stateRX=4199
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=8236 stateRX=4228
+[client 179 MAIN] alive: frames=8037 id=1 known=1 phase=1 rev=10 posRX=8274 stateRX=4247
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=8332 stateRX=4276
+[client 179 MAIN] alive: frames=8126 id=1 known=1 phase=1 rev=10 posRX=8370 stateRX=4295
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=8430 stateRX=4325
+[client 179 MAIN] alive: frames=8204 id=1 known=1 phase=4 rev=11 posRX=8468 stateRX=4344
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=8526 stateRX=4373
+[client 179 MAIN] alive: frames=8279 id=1 known=1 phase=4 rev=11 posRX=8566 stateRX=4393
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=8622 stateRX=4421
+[client 179 MAIN] alive: frames=8372 id=1 known=1 phase=4 rev=11 posRX=8662 stateRX=4441
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=8718 stateRX=4469
+[client 179 MAIN] alive: frames=8464 id=1 known=1 phase=4 rev=11 posRX=8760 stateRX=4490
+[client 179 DDS] alive: joinsSent=2 movesSent=674 posRX=8816 stateRX=4518
+DDS worker stopped
