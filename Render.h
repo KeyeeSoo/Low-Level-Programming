@@ -1,6 +1,8 @@
 #ifndef RENDER_H
 #define RENDER_H
 
+#include "Trace.h"
+
 /*
  * Rendering helpers for the existing GLFW / OpenGL client, written in C.
  * Call these functions only while a GLFW OpenGL context is current.
@@ -23,6 +25,9 @@ unsigned int render_load_image(const char *filename);
 /* Draw a previously loaded texture. Position and dimensions are in pixels. */
 void render_draw_image(unsigned int texture_id,
                        float x, float y, float width, float height);
+
+/* Draw a dotted target, mouse stroke, progress, and starting point. */
+void render_draw_trace(const TraceSession *session);
 
 /* Free cached textures before destroying the GLFW window. */
 void render_cleanup(void);

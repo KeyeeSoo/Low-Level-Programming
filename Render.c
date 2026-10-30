@@ -139,6 +139,59 @@ void render_draw_image(unsigned int texture_id,
     glPopAttrib();
 }
 
+void render_draw_trace(const TraceSession *session)
+{
+    if (session == NULL || session->target_count < 2) return;
+
+    glPushAttrib(GL_ENABLE_BIT | GL_CURRENT_BIT | GL_COLOR_BUFFER_BIT |
+                 GL_POINT_BIT | GL_LINE_BIT | GL_DEPTH_BUFFER_BIT);
+    glDisable(GL_TEXTURE_2D);
+    glDisable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    /* Dotted grey guide; every third point is about 12 pixels apart. */
+    glPointSize(4.0f);
+    glColor4f(0.3f, 0.35f, 0.45f, 0.9f);
+    glBegin(GL_POINTS);
+    for (int i = 0; i < session->target_count; i += 3)
+        glVertex2f(session->target[i].x, session->target[i].y);
+    glEnd();
+
+    /* Highlight the portion of the target completed in order. */
+    if (session->progress_index > 0) {
+        glLineWidth(2.0f);
+        glColor4f(0.1f, 0.65f, 0.30f, 0.6f);
+        glBegin(GL_LINE_STRIP);
+        for (int i = 0; i <= session->progress_index; i++)
+            glVertex2f(session->target[i].x, session->target[i].y);
+        glEnd();
+    }
+
+    /* Mouse stroke. */
+    if (session->stroke_count > 1) {
+        glLineWidth(3.0f);
+        if (session->status == TRACE_SUCCESS)
+            glColor4f(0.05f, 0.65f, 0.2f, 1.0f);
+        else if (session->status == TRACE_FAILED)
+            glColor4f(0.85f, 0.20f, 0.20f, 1.0f);
+        else
+            glColor4f(0.1f, 0.35f, 0.90f, 1.0f);
+        glBegin(GL_LINE_STRIP);
+        for (int i = 0; i < session->stroke_count; i++)
+            glVertex2f(session->stroke[i].x, session->stroke[i].y);
+        glEnd();
+    }
+
+    glPointSize(12.0f);
+    glColor4f(0.12f, 0.75f, 0.32f, 1.0f);
+    glBegin(GL_POINTS);
+    glVertex2f(session->target[0].x, session->target[0].y);
+    glEnd();
+
+    glPopAttrib();
+}
+
 void render_cleanup(void)
 {
     ImageCacheEntry *entry = image_cache;
