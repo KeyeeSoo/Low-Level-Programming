@@ -1,4 +1,4 @@
-/* gcc client.c messages.c -o client $(pkg-config --cflags --libs glfw3) -lGL $(pkg-config --cflags --libs CycloneDDS) -pthread -lm*/
+/* Build instructions: see README_Render.md (C client + C renderer). */
 
 /* Dr Khoo Teck Ping
 27 Aug 2026
@@ -11,13 +11,16 @@
 
 #include <GLFW/glfw3.h>
 #include <stdio.h>
+#include <stdbool.h>
+#include <stdint.h>
 #include <pthread.h>
 #include <unistd.h>
 #include "dds/dds.h"
 #include "messages.h"
-#include "stb_easy_font.h"
+#include "Render.h"
 
 #define STB_EASY_FONT_IMPLEMENTATION
+#include "stb_easy_font.h"
 
 #define MAX_SAMPLES 1
 #define MAX_PLAYERS 5
@@ -335,6 +338,9 @@ int main(void)
 
     glfwMakeContextCurrent(window);
 
+    // Optional image for players; if missing, the red squares still render.
+    unsigned int player_image = render_load_image("player.png");
+
     /* Use pixel coordinates */
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
@@ -407,21 +413,23 @@ int main(void)
 				snprintf(str_player, sizeof(str_player), "%d", i+1);
 				/* printf("Coords = %d, %d\n",arr_Players[i].x, arr_Players[i].y);				 */
 				/* draw_text(100, 400, 3.0f, str_banner); */
-				
-				draw_text(arr_Players[i].x, arr_Players[i].y, 3.0f, str_player);				
-				
-				glBegin(GL_LINE_LOOP);
-					glVertex2f(arr_Players[i].x, arr_Players[i].y);
-					glVertex2f(arr_Players[i].x, arr_Players[i].y + SQ_WIDTH);
-					glVertex2f(arr_Players[i].x + SQ_WIDTH, arr_Players[i].y + SQ_WIDTH);
-					glVertex2f(arr_Players[i].x + SQ_WIDTH, arr_Players[i].y);
-				glEnd();
+                // Draw an optional image, the original outline, and the ID label.
+                if (player_image != 0)
+                    render_draw_image(player_image,
+                                      arr_Players[i].x, arr_Players[i].y,
+                                      SQ_WIDTH, SQ_WIDTH);
+
+                render_draw_square(arr_Players[i].x, arr_Players[i].y,
+                                   SQ_WIDTH, 1.0f, 0.0f, 0.0f, 1.0f, 0);
+
+                draw_text(arr_Players[i].x, arr_Players[i].y, 3.0f, str_player);
 			}
 			pthread_mutex_unlock(&mutex);			
 		}
         glfwSwapBuffers(window);
     }
 
+    render_cleanup(); // Delete textures before the OpenGL context is destroyed.
     glfwDestroyWindow(window);
     glfwTerminate();
 

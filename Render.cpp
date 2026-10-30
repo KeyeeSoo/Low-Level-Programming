@@ -1,3 +1,0 @@
-/*
-This file is used to store functions used for rendering graphics
-*/
