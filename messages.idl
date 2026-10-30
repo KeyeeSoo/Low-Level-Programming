@@ -1,25 +1,51 @@
-//idlc -l c messages.idl
+// Based on the original DDS messages.idl.
+// After editing, always regenerate messages.c and messages.h with: idlc -l c messages.idl
 
 struct JoinRequest
 {
-	boolean b_dummy;
+    boolean b_dummy;
+    long int_client_token; // Identify a client so repeated join requests reuse the same ID
 };
 
 struct JoinResponse
 {
-	//IDL needs int width to be clearly defined
     long int_player_id;
+    long int_client_token;
 };
 
 struct Input
 {
-	long int_player_id;
+    long int_player_id;
     char ch_direction;
+    long int_client_token;
 };
 
 struct Position
 {
-	long int_player_id;
-	long int_x;
-	long int_y;
+    long int_player_id;
+    long int_x;
+    long int_y;
+};
+
+// E to pick up/add, Q to drop, and results of the local mouse tracing.
+struct GameAction
+{
+    long int_player_id;
+    long int_client_token;
+    long int_action;
+    long int_session;
+};
+
+// Shared authoritative state sent by the server to both clients.
+struct GameState
+{
+    long int_phase;
+    long int_stage;
+    long int_actor;
+    long int_mistakes;
+    long int_held1;
+    long int_held2;
+    long int_session;
+    long int_revision;
+    long int_num_players;
 };

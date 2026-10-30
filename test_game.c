@@ -1,54 +1,55 @@
-/* Build: gcc -std=c11 test_game.c GameLogic.c -lm -o test_game && ./test_game */
-#include "GameLogic.h"
+#include "GameRules.h"
+#include "Trace.h"
 #include <assert.h>
 #include <stdio.h>
 #include <math.h>
-static void move_near(GameWorld*w,int id,GamePoint p) {
-    w->x[id-1]=p.x; w->y[id-1]=p.y;
-}
-static void command(GameWorld*w,int id,int action) {
-    game_command(w,id,100+id,action,0,0,w->session);
-}
-int main(void) {
-    GameWorld w;game_init(&w);
-    assert(game_join(&w,101)==1);
-    assert(game_join(&w,101)==1);
-    assert(game_join(&w,102)==2);
-    assert(game_join(&w,103)==0);
-    game_command(&w,1,999,POTION_INTERACT,0,0,0); /* Reject wrong token */
-    assert(w.held[0]==-1);
-    /* Wrong ingredient immediately ends game if added to cauldron. */
-    move_near(&w,1,potion_ingredients[1]);command(&w,1,POTION_INTERACT);
-    assert(w.held[0]==1);
-    move_near(&w,1,potion_cauldron);command(&w,1,POTION_INTERACT);
-    assert(w.phase==POTION_LOSE);
 
-    game_init(&w);game_join(&w,101);game_join(&w,102);
-    for(int item=0;item<4;item++) {
-        int id=item%2+1;
-        move_near(&w,id,potion_ingredients[item]);command(&w,id,POTION_INTERACT);
-        assert(w.held[id-1]==item);
-        move_near(&w,id,potion_cauldron);command(&w,id,POTION_INTERACT);
-        assert(w.phase==POTION_TRACE&&w.active_player==id);
-        /* Old session and wrong player cannot certify a rune. */
-        game_command(&w,3-id,100+(3-id),POTION_TRACE_OK,0,0,w.session);
-        game_command(&w,id,100+id,POTION_TRACE_OK,0,0,w.session-1);
-        assert(w.phase==POTION_TRACE);
-        command(&w,id,POTION_TRACE_OK);
-        assert(w.phase==POTION_STIR);
-        command(&w,id,POTION_STIR_OK);
-        assert(w.next_ingredient==item+1);
+static void trace_full(TraceSession *s){
+    trace_mouse_down(s,s->target[0].x,s->target[0].y);
+    assert(s->status==TRACE_DRAWING);
+    for(int i=1;i<s->target_count;i++)trace_mouse_move(s,s->target[i].x,s->target[i].y);
+    trace_mouse_up(s,s->target[s->target_count-1].x,s->target[s->target_count-1].y);
+    assert(s->status==TRACE_SUCCESS);
+}
+static void shapes(void){
+    static TraceSession t;
+    for(int shape=TRACE_CIRCLE;shape<=TRACE_FLOWER;shape++){
+        assert(trace_set_shape(&t,(TraceShape)shape,500,355));trace_full(&t);
     }
-    assert(w.phase==POTION_WIN);
-
-    game_init(&w);game_join(&w,101);game_join(&w,102);
-    move_near(&w,1,potion_ingredients[0]);command(&w,1,POTION_INTERACT);
-    move_near(&w,1,potion_cauldron);command(&w,1,POTION_INTERACT);
-    for(int i=1;i<=3;i++) {
-        command(&w,1,POTION_TRACE_BAD);
-        assert(w.rune_mistakes==i);
+    TracePoint v[5];int order[5]={0,2,4,1,3};
+    for(int i=0;i<5;i++){
+        float angle=-3.14159265f/2+2*3.14159265f*order[i]/5;
+        v[i]=(TracePoint){500+125*cosf(angle),355+125*sinf(angle)};
     }
-    assert(w.phase==POTION_LOSE);
-    puts("All game logic tests passed.");
-    return 0;
+    assert(trace_set_path(&t,v,5,1));trace_full(&t);
+    trace_mouse_down(&t,20,20);assert(t.status==TRACE_SUCCESS);
+}
+int main(void){
+    GameRules g;game_init(&g);
+    assert(game_join(&g,123)==1);
+    assert(game_join(&g,123)==1);assert(g.num_players==1);
+    assert(game_join(&g,456)==2);assert(game_join(&g,789)==0);
+    int x=g.players[0].x;
+    game_move(&g,0,123,'r');game_move(&g,3,123,'r');game_move(&g,1,999,'r');
+    assert(g.players[0].x==x);
+    game_move(&g,1,123,'r');assert(g.players[0].x==x+STEP);
+    /* Move to Moonflower, pick it up, move to cauldron and add. */
+    g.players[0].x=ingredient_x[0]-SQ_WIDTH/2;
+    g.players[0].y=ingredient_y[0]-SQ_WIDTH/2;
+    game_action(&g,1,123,ACTION_INTERACT,0);assert(g.held[0]==0);
+    g.players[0].x=cauldron_x-SQ_WIDTH/2;
+    g.players[0].y=cauldron_y-SQ_WIDTH/2;
+    game_action(&g,1,123,ACTION_INTERACT,0);
+    assert(g.phase==PHASE_TRACE && g.actor==1);
+    int session=g.session;
+    game_action(&g,2,456,ACTION_TRACE_OK,session);assert(g.phase==PHASE_TRACE);
+    game_action(&g,1,123,ACTION_TRACE_OK,session-1);assert(g.phase==PHASE_TRACE);
+    game_action(&g,1,123,ACTION_TRACE_BAD,session);
+    assert(g.mistakes==1);
+    game_action(&g,1,123,ACTION_TRACE_OK,session);
+    assert(g.phase==PHASE_STIR);
+    game_action(&g,1,123,ACTION_STIR_OK,session);
+    assert(g.phase==PHASE_COLLECT && g.stage==1);
+    shapes();
+    puts("Passed: join deduplication, invalid IDs, movement, potion rules and tracing.");
 }

@@ -1,122 +1,79 @@
-# The Gingerbread Curse — playable first prototype (pure C + DDS)
+# The Gingerbread Curse — ORIGINAL DDS server integration (pure C)
 
-This prototype is based on the supplied concept and the original `client.c` architecture:
-**Cyclone DDS** for client/server networking, **GLFW + legacy OpenGL** for the
-window and drawing, and **C** for everything. Sprites are coloured squares.
+This version is an extension of the uploaded original `server.c` / `client.c` and `messages.idl`, **not** the separate `GameNet.idl` prototype. It retains the original DDS **JoinRequest / JoinResponse / Input / Position** topic names and the original server's approach to movement and player collision. It adds the game using **GameAction / GameState**.
 
-**Important:** the original `client.c` and existing movement-only server do not
-understand the potion/game messages. This is a **separate playable version**,
-with a replacement `game_client.c` and `game_server.c` that use the new
-`GameNet.idl`. Your old files are not overwritten.
+**IMPORTANT:** Both new `server.c` and new `client.c` must be run together. They are NOT wire-compatible with the old executables because the IDL message schemas have been extended (including a client token). Regenerate `messages.c` and `messages.h` using the supplied `messages.idl` and rebuild both. Don't mix old/new binaries. Your originals are backed up in `original_backup/`.
 
-## What's implemented
+## Game flow
 
-- Maximum 2 connected players, assigned P1/P2 via DDS join/welcome topics.
-- Both see the same authoritative positions, carried items and game stage.
-- Move using **W A S D**, press **E** to pick up an ingredient nearby, and E
-  next to the cauldron to add it. **Q** drops the carried ingredient.
-- Correct recipe: Moonflower -> Ginger Root -> Black Feather -> Sugar Glass.
-- Adding the wrong ingredient ends the game.
-- Each correctly added ingredient opens a rune tracing minigame for the player
-  who added it: pentagram (crossing star), circle, flower, rectangle.
-- Start on the green dot, **hold left mouse**, follow the dotted path, release.
-  The detector checks sequential progress, tolerance and distance travelled.
-- Wrong rune tracing 3 times in total ends the game. A successful rune opens
-  a circular **stirring** minigame; stirring must be completed to proceed.
-- Completing all four rounds wins the game.
-- The server is authoritative about game progression and ingredients. Trace
-  recognition currently runs on the player's local client, and the client
-  reports pass/fail to the server. This is fine for an early prototype but
-  is not cheat-resistant.
+1. Start one `server` and **two** `client` processes. Server assigns P1/P2. Duplicate join requests reuse IDs.
+2. Move via WASD or arrow keys. `E` picks up a coloured ingredient square nearby. `Q` drops it.
+3. Approach cauldron while holding an ingredient and press `E` to add it.
+4. Correct order: **Moonflower -> Ginger Root -> Black Feather -> Sugar Glass**. Wrong ingredient = game over.
+5. The player who adds each ingredient receives a rune: **pentagram, circle, flower, rectangle** (one per ingredient).
+6. **Click the green dot, hold LEFT mouse, follow dots, release.** Detection checks path order, 14-pixel tolerance, 85% accuracy, 97% coverage and proximity to endpoint. Three rune failures total = game over.
+7. After each rune, trace the circle to stir. Stir attempts can be retried without using a rune mistake.
+8. All four stages completed = victory. Restart server and both clients to play again.
 
 ## Files
 
-- `game_client.c`: window, input, user interface, DDS subscriber/publisher.
-- `game_server.c`: DDS authoritative server, receives requests, broadcasts state.
-- `GameLogic.h/.c`: recipe, movement, interactions and win/lose conditions.
-- `GameNet.idl`: DDS message definitions (generate GameNet.h/.c with `idlc`).
-- `Trace.h/.c`: shape generator, mouse tracking and detection.
-- `Render.h/.c`: OpenGL square and dotted-line rendering, optional PNG textures.
-- `test_game.c`, `test_rune_paths.c`: tests without DDS/GLFW.
-- `build.sh`: compiler commands.
+- `server.c` — based on original server DDS participant/topics and worker thread; fixes unsafe ID indexing and repeated joins, adds game events.
+- `client.c` — based on original client DDS concepts; uses `Render.c` for square sprites, displays potion UI and invokes mouse tracing.
+- `messages.idl` — original 4 message types **preserved and extended** with client token + 2 new game messages.
+- `GameRules.c`/`.h` — original-style square movement/collision plus game state transitions; has no DDS or GLFW dependencies.
+- `Trace.c`/`.h` — independent reusable pure-C mouse tracing detector.
+- `Render.c`/`.h` — your existing C renderer, including PNG/JPG capability.
+- `test_game.c` — unit tests for joins, invalid IDs, movement, recipe progression and trace shapes.
+- `original_backup/` — copies of the original source files you supplied.
 
 ## Prerequisites
 
-1. Linux setup with GCC, GLFW3, OpenGL and Cyclone DDS (you already used these
-   for your original client). Cyclone DDS **idlc** must also be installed.
-2. Place `stb_image.h` and `stb_easy_font.h` in this directory. They are small
-   public single-header libraries. If you already have them in your original
-   project, copy them from there. Otherwise use:
+Linux: Cyclone DDS (`idlc`, `pkg-config CycloneDDS`), GLFW3, OpenGL, GCC, and pthread. Put these two headers (already used by your earlier working client) in this directory:
 
-   ```bash
-   wget https://raw.githubusercontent.com/nothings/stb/master/stb_image.h
-   wget https://raw.githubusercontent.com/nothings/stb/master/stb_easy_font.h
-   ```
+```bash
+wget https://raw.githubusercontent.com/nothings/stb/master/stb_image.h
+wget https://raw.githubusercontent.com/nothings/stb/master/stb_easy_font.h
+```
+
+Alternatively copy the two headers from your existing project. They are not included in this ZIP.
 
 ## Build
 
-From the folder containing these files:
-
 ```bash
+cd Gingerbread_Original_DDS
 chmod +x build.sh
 ./build.sh
 ```
 
-Or compile manually:
+This first regenerates `messages.c` + `messages.h` via `idlc -l c messages.idl` and then compiles:
 
 ```bash
-idlc -l c GameNet.idl
+gcc -std=c11 -Wall -Wextra -O1 -g server.c GameRules.c messages.c -o server \
+    $(pkg-config --cflags --libs CycloneDDS) -pthread -lm
 
-gcc -std=c11 game_server.c GameLogic.c GameNet.c -o potion_server \
-    $(pkg-config --cflags --libs CycloneDDS) -lm
-
-gcc -std=c11 game_client.c Render.c Trace.c GameLogic.c GameNet.c -o potion_client \
-    $(pkg-config --cflags --libs glfw3 CycloneDDS) -lGL -lm
+gcc -std=c11 -Wall -Wextra -O1 -g client.c GameRules.c Render.c Trace.c messages.c -o client \
+    $(pkg-config --cflags --libs glfw3 CycloneDDS) -lGL -pthread -lm
 ```
 
-**Do not also compile your old `client.c` or `messages.c` into these executables.**
-The game uses `GameNet.c` generated from `GameNet.idl` instead.
+### Run
 
-## Run
-
-Terminal 1:
+Use **three separate terminals**, from the build folder:
 
 ```bash
-./potion_server
+./server       # Terminal 1
+./client       # Terminal 2
+./client       # Terminal 3
 ```
 
-Terminals 2 and 3 (or two computers on the same LAN):
+Close older movement-only server/client instances before starting. On different computers, all machines must be able to discover each other over DDS (same LAN or configured VPN/peers); share the *same new* `messages.idl`-generated protocol.
 
-```bash
-./potion_client
-```
+## Important limitations / next steps
 
-When two clients are connected, they can move, pick ingredients, and complete
-rune/stir stages. A single computer can run both client windows as a test.
-For different Wi-Fi networks, DDS usually needs explicit peer configuration,
-e.g. a VPN plus Cyclone DDS XML peer configuration.
-
-## Adjustable values
-
-- Rune tolerance / scoring: `Trace.h` constants (`TRACE_TOLERANCE_PIXELS`,
-  `TRACE_MIN_ACCURACY`, `TRACE_MIN_COMPLETION`).
-- Ingredient positions, cauldron and movement speed: `GameLogic.c`.
-- Rune appearance, custom pentagram and stir circle: `game_client.c`.
-- Window dimensions and colours: `game_client.c`.
-- Mistake limit: `GameLogic.c` in `POTION_TRACE_BAD` handler.
-
-## Known first-prototype limitations
-
-- Squares and basic rectangles instead of character art, animations and décor.
-- No local audio, inventory popup, title menu or score screen beyond WIN/LOSE.
-- No wall, player-to-player or cauldron collision yet: player motion is bounded
-  to the rectangular room.
-- The partner sees the tracing modal / wait indicator, **not** a live copy of
-  the other player's stroke. Later, send stroke coordinates over DDS.
-- Client disconnects and reconnects aren't handled; server has two slots and
-  a full restart starts a new game.
-- Drawing detection assumes the target is traced in its indicated order.
-- Full client/server graphical integration **could not be run** here because
-  the build environment did not have Cyclone DDS or GLFW development libraries.
-  The platform-independent game logic and tracing tests passed, and all source
-  files passed a C syntax check using lightweight API stubs.
+- Runtime multiplayer integration was **not tested** here because this environment lacks Cyclone DDS + GLFW dev libraries / a window. C syntax checks against library stubs and actual native unit tests were completed.
+- Movement is sent in small directional steps like the original server, and the new token prevents a second client from taking over another client's player ID by accident. DDS itself is not providing secure authentication; do not use this approach for an untrusted public internet game.
+- Players who disconnect currently keep their player slots until the server restarts. Next step: add explicit Leave/Disconnect and session restart.
+- The UI uses 800x600 pixel coordinates; the window is intentionally fixed-size for the first version.
+- PNG textures remain available through Render.c but sprites are currently square placeholders as requested.
+- Game and movement are server-authoritative; **mouse tracing is verified client-side only**. Server validates stage/active player/session when accepting pass/fail, but it cannot independently verify the actual mouse path yet.
+- No animated sprite/scene art, no menus/audio, no in-game restart, no interaction between a dropped ingredient and its new drop position.
+- If a crash persists, use `gcc -fsanitize=address,undefined -fno-omit-frame-pointer -g` in both build commands and capture the sanitizer output.

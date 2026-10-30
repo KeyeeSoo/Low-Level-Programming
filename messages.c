@@ -11,24 +11,26 @@
 static const uint32_t JoinRequest_ops [] =
 {
   DDS_OP_ADR | DDS_OP_TYPE_1BY, offsetof (JoinRequest, b_dummy),
+  DDS_OP_ADR | DDS_OP_TYPE_4BY | DDS_OP_FLAG_SGN, offsetof (JoinRequest, int_client_token),
   DDS_OP_RTS
 };
 
 const dds_topic_descriptor_t JoinRequest_desc =
 {
   sizeof (JoinRequest),
-  1u,
+  4u,
   DDS_TOPIC_FIXED_SIZE,
   0u,
   "JoinRequest",
   NULL,
-  2,
+  3,
   JoinRequest_ops,
   ""
 };
 static const uint32_t JoinResponse_ops [] =
 {
   DDS_OP_ADR | DDS_OP_TYPE_4BY | DDS_OP_FLAG_SGN, offsetof (JoinResponse, int_player_id),
+  DDS_OP_ADR | DDS_OP_TYPE_4BY | DDS_OP_FLAG_SGN, offsetof (JoinResponse, int_client_token),
   DDS_OP_RTS
 };
 
@@ -40,7 +42,7 @@ const dds_topic_descriptor_t JoinResponse_desc =
   0u,
   "JoinResponse",
   NULL,
-  2,
+  3,
   JoinResponse_ops,
   ""
 };
@@ -48,6 +50,7 @@ static const uint32_t Input_ops [] =
 {
   DDS_OP_ADR | DDS_OP_TYPE_4BY | DDS_OP_FLAG_SGN, offsetof (Input, int_player_id),
   DDS_OP_ADR | DDS_OP_TYPE_1BY | DDS_OP_FLAG_SGN, offsetof (Input, ch_direction),
+  DDS_OP_ADR | DDS_OP_TYPE_4BY | DDS_OP_FLAG_SGN, offsetof (Input, int_client_token),
   DDS_OP_RTS
 };
 
@@ -59,7 +62,7 @@ const dds_topic_descriptor_t Input_desc =
   0u,
   "Input",
   NULL,
-  3,
+  4,
   Input_ops,
   ""
 };
@@ -81,5 +84,52 @@ const dds_topic_descriptor_t Position_desc =
   NULL,
   4,
   Position_ops,
+  ""
+};
+static const uint32_t GameAction_ops [] =
+{
+  DDS_OP_ADR | DDS_OP_TYPE_4BY | DDS_OP_FLAG_SGN, offsetof (GameAction, int_player_id),
+  DDS_OP_ADR | DDS_OP_TYPE_4BY | DDS_OP_FLAG_SGN, offsetof (GameAction, int_client_token),
+  DDS_OP_ADR | DDS_OP_TYPE_4BY | DDS_OP_FLAG_SGN, offsetof (GameAction, int_action),
+  DDS_OP_ADR | DDS_OP_TYPE_4BY | DDS_OP_FLAG_SGN, offsetof (GameAction, int_session),
+  DDS_OP_RTS
+};
+
+const dds_topic_descriptor_t GameAction_desc =
+{
+  sizeof (GameAction),
+  4u,
+  DDS_TOPIC_FIXED_SIZE,
+  0u,
+  "GameAction",
+  NULL,
+  5,
+  GameAction_ops,
+  ""
+};
+static const uint32_t GameState_ops [] =
+{
+  DDS_OP_ADR | DDS_OP_TYPE_4BY | DDS_OP_FLAG_SGN, offsetof (GameState, int_phase),
+  DDS_OP_ADR | DDS_OP_TYPE_4BY | DDS_OP_FLAG_SGN, offsetof (GameState, int_stage),
+  DDS_OP_ADR | DDS_OP_TYPE_4BY | DDS_OP_FLAG_SGN, offsetof (GameState, int_actor),
+  DDS_OP_ADR | DDS_OP_TYPE_4BY | DDS_OP_FLAG_SGN, offsetof (GameState, int_mistakes),
+  DDS_OP_ADR | DDS_OP_TYPE_4BY | DDS_OP_FLAG_SGN, offsetof (GameState, int_held1),
+  DDS_OP_ADR | DDS_OP_TYPE_4BY | DDS_OP_FLAG_SGN, offsetof (GameState, int_held2),
+  DDS_OP_ADR | DDS_OP_TYPE_4BY | DDS_OP_FLAG_SGN, offsetof (GameState, int_session),
+  DDS_OP_ADR | DDS_OP_TYPE_4BY | DDS_OP_FLAG_SGN, offsetof (GameState, int_revision),
+  DDS_OP_ADR | DDS_OP_TYPE_4BY | DDS_OP_FLAG_SGN, offsetof (GameState, int_num_players),
+  DDS_OP_RTS
+};
+
+const dds_topic_descriptor_t GameState_desc =
+{
+  sizeof (GameState),
+  4u,
+  DDS_TOPIC_FIXED_SIZE,
+  0u,
+  "GameState",
+  NULL,
+  10,
+  GameState_ops,
   ""
 };

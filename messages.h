@@ -18,6 +18,7 @@ extern "C" {
 typedef struct JoinRequest
 {
   bool b_dummy;
+  int32_t int_client_token;
 } JoinRequest;
 
 extern const dds_topic_descriptor_t JoinRequest_desc;
@@ -31,6 +32,7 @@ dds_sample_free ((d), &JoinRequest_desc, (o))
 typedef struct JoinResponse
 {
   int32_t int_player_id;
+  int32_t int_client_token;
 } JoinResponse;
 
 extern const dds_topic_descriptor_t JoinResponse_desc;
@@ -45,6 +47,7 @@ typedef struct Input
 {
   int32_t int_player_id;
   char ch_direction;
+  int32_t int_client_token;
 } Input;
 
 extern const dds_topic_descriptor_t Input_desc;
@@ -69,6 +72,43 @@ extern const dds_topic_descriptor_t Position_desc;
 
 #define Position_free(d,o) \
 dds_sample_free ((d), &Position_desc, (o))
+
+typedef struct GameAction
+{
+  int32_t int_player_id;
+  int32_t int_client_token;
+  int32_t int_action;
+  int32_t int_session;
+} GameAction;
+
+extern const dds_topic_descriptor_t GameAction_desc;
+
+#define GameAction__alloc() \
+((GameAction*) dds_alloc (sizeof (GameAction)));
+
+#define GameAction_free(d,o) \
+dds_sample_free ((d), &GameAction_desc, (o))
+
+typedef struct GameState
+{
+  int32_t int_phase;
+  int32_t int_stage;
+  int32_t int_actor;
+  int32_t int_mistakes;
+  int32_t int_held1;
+  int32_t int_held2;
+  int32_t int_session;
+  int32_t int_revision;
+  int32_t int_num_players;
+} GameState;
+
+extern const dds_topic_descriptor_t GameState_desc;
+
+#define GameState__alloc() \
+((GameState*) dds_alloc (sizeof (GameState)));
+
+#define GameState_free(d,o) \
+dds_sample_free ((d), &GameState_desc, (o))
 
 #ifdef __cplusplus
 }
