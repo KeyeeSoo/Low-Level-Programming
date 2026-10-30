@@ -22,13 +22,19 @@
 
 #define PI 3.14159265358979323846f
 
+static const float ingredient_colors[INGREDIENT_COUNT][3] = {
+    {.35f,.67f,.37f},{.81f,.48f,.23f},{.52f,.35f,.70f},{.30f,.59f,.83f},
+    {.38f,.62f,.52f},{.72f,.26f,.49f},{.86f,.66f,.29f},{.74f,.43f,.28f},
+    {.40f,.68f,.81f},{.55f,.46f,.35f}
+};
+
 /* Rendering and tracing belong exclusively to the GLFW/main thread. */
 typedef struct {
     int token,id,known_state;
     int visible[MAX_PLAYERS],x[MAX_PLAYERS],y[MAX_PLAYERS];
     GameState state;
     TraceSession trace;
-    int shown_phase,shown_stage,shown_session,shown_mistakes;
+    int shown_phase,shown_stage,shown_session,shown_mistakes,shown_round;
     int pending_result,prev_e,prev_q;
     double last_input_time;
     int network_failed;
@@ -138,32 +144,59 @@ static void make_stir(TraceSession *t){
     }
     trace_set_path(t,v,180,1);t->shape=TRACE_CIRCLE;
 }
+/* Shape belongs to the INGREDIENT, not its random position in the recipe. */
+static int current_recipe_ingredient(void){
+    const int ids[RECIPE_MAX_INGREDIENTS]={app.state.int_recipe0,app.state.int_recipe1,
+                                     app.state.int_recipe2,app.state.int_recipe3};
+    int index=app.state.int_stage;
+    return index>=0 && index<app.state.int_recipe_length ? ids[index] : -1;
+}
 static void prepare_trace(void){
     if(!app.known_state)return;
-    int phase=app.state.int_phase,stage=app.state.int_stage;
+    int phase=app.state.int_phase,item=current_recipe_ingredient();
     if(phase==PHASE_STIR)make_stir(&app.trace);
     else if(phase==PHASE_TRACE){
-        if(stage==0)make_pentagram(&app.trace);
-        else if(stage==1)trace_set_shape(&app.trace,TRACE_CIRCLE,500,355);
-        else if(stage==2)trace_set_shape(&app.trace,TRACE_FLOWER,500,355);
-        else trace_set_shape(&app.trace,TRACE_RECTANGLE,500,355);
+        if(item<0 || item>=INGREDIENT_COUNT)return;
+        switch(ingredient_rune[item]){
+            case 0: make_pentagram(&app.trace);break;
+            case 1: trace_set_shape(&app.trace,TRACE_CIRCLE,500,355);break;
+            case 2: trace_set_shape(&app.trace,TRACE_FLOWER,500,355);break;
+            case 3: trace_set_shape(&app.trace,TRACE_RECTANGLE,500,355);break;
+        }
     }
     app.pending_result=0;
 }
 static void receive_state(const GameState *s){
     if(s->int_phase<PHASE_COLLECT || s->int_phase>PHASE_LOSE ||
-       s->int_stage<0 || s->int_stage>4 ||
+       s->int_recipe_length<RECIPE_MIN_INGREDIENTS ||
+       s->int_recipe_length>RECIPE_MAX_INGREDIENTS ||
+       s->int_stage<0 || s->int_stage>s->int_recipe_length ||
        s->int_actor<0 || s->int_actor>MAX_PLAYERS ||
-       s->int_held1 < -1 || s->int_held1>3 ||
-       s->int_held2 < -1 || s->int_held2>3 ||
-       s->int_num_players<0 || s->int_num_players>MAX_PLAYERS)return;
+       s->int_held1 < -1 || s->int_held1>=INGREDIENT_COUNT ||
+       s->int_held2 < -1 || s->int_held2>=INGREDIENT_COUNT ||
+       s->int_num_players<0 || s->int_num_players>MAX_PLAYERS ||
+       s->int_round<0 || s->int_round>=RECIPES_TO_WIN ||
+       s->int_recipes_completed<0 || s->int_recipes_completed>RECIPES_TO_WIN ||
+       s->int_used_mask<0 || s->int_used_mask>=(1<<INGREDIENT_COUNT) ||
+       s->int_timer_limit_ms<0 || s->int_timer_limit_ms>3600000 ||
+       s->int_timer_remaining_ms<0 ||
+       s->int_timer_remaining_ms>s->int_timer_limit_ms)return;
+    const int recipe[RECIPE_MAX_INGREDIENTS]={s->int_recipe0,s->int_recipe1,
+                                         s->int_recipe2,s->int_recipe3};
+    int seen=0;
+    for(int i=0;i<RECIPE_MAX_INGREDIENTS;i++){
+        if(i>=s->int_recipe_length){if(recipe[i]!=-1)return;continue;}
+        if(recipe[i]<0 || recipe[i]>=INGREDIENT_COUNT || (seen&(1<<recipe[i])))return;
+        seen|=1<<recipe[i];
+    }
     int changed=!app.known_state || app.shown_phase!=s->int_phase ||
         app.shown_stage!=s->int_stage || app.shown_session!=s->int_session ||
-        app.shown_mistakes!=s->int_mistakes;
+        app.shown_mistakes!=s->int_mistakes || app.shown_round!=s->int_round;
     app.state=*s;app.known_state=1;
     if(changed){
         app.shown_phase=s->int_phase;app.shown_stage=s->int_stage;
         app.shown_session=s->int_session;app.shown_mistakes=s->int_mistakes;
+        app.shown_round=s->int_round;
         prepare_trace();
     }
 }
@@ -373,38 +406,81 @@ static void cursor_move(GLFWwindow *w,double x,double y){
 static void draw_scene(void){
     rect(0,0,WIDTH,HEIGHT,.15f,.12f,.22f,1);
     rect(8,8,784,83,.25f,.18f,.28f,1);
-    draw_text(205,19,3.1f,"THE GINGERBREAD CURSE",.99f,.85f,.66f);
-    draw_text(279,62,1.35f,"TWO-PLAYER POTION GAME",.86f,.79f,.90f);
+    draw_text(239,27,2.05f,"THE GINGERBREAD CURSE",.98f,.85f,.69f);
+    char banner[128];
+    snprintf(banner,sizeof(banner),"CO-OP POTIONS  |  RECIPE %d / %d  |  COMPLETED %d",
+             app.known_state?app.state.int_round+1:1,RECIPES_TO_WIN,
+             app.known_state?app.state.int_recipes_completed:0);
+    draw_text(239,62,1.22f,banner,.86f,.79f,.90f);
+    if(app.known_state && app.state.int_num_players>=2 &&
+       app.state.int_timer_limit_ms>0){
+        int secs=(app.state.int_timer_remaining_ms+999)/1000;
+        char timer_text[40];
+        snprintf(timer_text,sizeof(timer_text),"%02d s",secs);
+        const int low=app.state.int_timer_remaining_ms<=10000;
+        rect(676,18,103,58,low?.52f:.19f,low?.13f:.26f,low?.17f:.30f,1);
+        draw_text(688,24,1.2f,"TIME LEFT",.96f,.89f,.77f);
+        draw_text(698,43,2.12f,timer_text,low?1.0f:.73f,low?.44f:.96f,low?.44f:.68f);
+        rect(680,69,94,4,.33f,.32f,.36f,1);
+        float fraction=(float)app.state.int_timer_remaining_ms /
+                       (float)app.state.int_timer_limit_ms;
+        rect(680,69,94*fraction,4,low?.96f:.39f,low?.24f:.88f,low?.22f:.58f,1);
+    }
     rect(9,101,179,488,.96f,.86f,.70f,1);frame(9,101,179,488,.45f,.29f,.21f);
     label(23,119,2.3f,"RECIPE");
-    label(20,160,1.05f,"Add in this order:");
-    const float colors[4][3]={{.35f,.67f,.37f},{.81f,.48f,.23f},{.52f,.35f,.70f},{.30f,.59f,.83f}};
-    for(int i=0;i<4;i++){
-        float y=194+i*56;
-        render_draw_square(24,y,25,colors[i][0],colors[i][1],colors[i][2],1,1);
+    label(20,160,1.05f,"Server-shuffled order:");
+    const float (*colors)[3]=ingredient_colors;
+    const int recipe[RECIPE_MAX_INGREDIENTS]={
+        app.known_state?app.state.int_recipe0:0,
+        app.known_state?app.state.int_recipe1:1,
+        app.known_state?app.state.int_recipe2:2,
+        app.known_state?app.state.int_recipe3:3
+    };
+    int recipe_len=app.known_state?app.state.int_recipe_length:0;
+    for(int i=0;i<recipe_len;i++){
+        int item=recipe[i];
+        float y=194+i*52;
+        render_draw_square(24,y,25,colors[item][0],colors[item][1],colors[item][2],1,1);
         char step[4];snprintf(step,sizeof(step),"%d",i+1);
         draw_text(33,y+6,1.45f,step,1,1,1);
-        label(55,y+8,1.12f,ingredient_names[i]);
-        if(app.known_state && i<app.state.int_stage)label(162,y+7,1.1f,"OK");
+        label(55,y+8,1.12f,ingredient_names[item]);
+        if(app.known_state && i<app.state.int_stage)label(163,y+7,1.05f,"OK");
     }
-    label(22,455,1.17f,"CONTROLS");
-    label(22,481,1.10f,"WASD / Arrows: Move");
-    label(22,504,1.10f,"E: Interact  Q: Drop");
-    label(22,527,1.08f,"Mouse: Trace / Stir");
-    label(22,559,1.05f,"Trace either direction");
+    if(app.known_state && app.state.int_num_players>=2 &&
+       app.state.int_phase!=PHASE_WIN && app.state.int_phase!=PHASE_LOSE){
+        char small_timer[60];
+        snprintf(small_timer,sizeof(small_timer),"Time left: %d s",
+                 (app.state.int_timer_remaining_ms+999)/1000);
+        if(app.state.int_timer_remaining_ms<=10000)
+            draw_text(20,399,1.12f,small_timer,.85f,.15f,.16f);
+        else label(20,399,1.12f,small_timer);
+    }
+    if(app.known_state){
+        char recipe_info[64];
+        snprintf(recipe_info,sizeof(recipe_info),"%d ingredients selected",recipe_len);
+        label(20,375,1.10f,recipe_info);
+    }
+    label(20,425,1.10f,"P1/P2 alternate pickup");
+    label(20,443,1.10f,"Partner traces rune");
+    label(22,473,1.17f,"CONTROLS");
+    label(22,496,1.04f,"WASD / Arrows: Move");
+    label(22,518,1.04f,"E: Interact  Q: Drop");
+    label(22,540,1.04f,"Mouse: Trace / Stir");
+    label(22,562,1.04f,"Trace either direction");
     rect(199,104,588,482,.35f,.27f,.28f,1);
     for(int y=138;y<580;y+=30){
         glPushAttrib(GL_CURRENT_BIT|GL_ENABLE_BIT);glDisable(GL_TEXTURE_2D);
-        glColor3f(.42f,.33f,.34f);glBegin(GL_LINES);glVertex2f(204,y);glVertex2f(785,y);glEnd();glPopAttrib();
+        glColor3f(.42f,.33f,.34f);glBegin(GL_LINES);
+        glVertex2f(204,y);glVertex2f(785,y);glEnd();glPopAttrib();
     }
     frame(199,104,588,482,.11f,.08f,.12f);
     if(!app.known_state)return;
-    for(int i=app.state.int_stage;i<4;i++){
+    for(int i=0;i<INGREDIENT_COUNT;i++){
         int held=(app.state.int_held1==i || app.state.int_held2==i);
-        if(held)continue;
+        if(held || (app.state.int_used_mask&(1<<i)))continue;
         render_draw_square(ingredient_x[i]-21,ingredient_y[i]-21,42,
-            colors[i][0],colors[i][1],colors[i][2],1,1);
-        label(ingredient_x[i]-33,ingredient_y[i]+27,1.05f,ingredient_names[i]);
+                           colors[i][0],colors[i][1],colors[i][2],1,1);
+        label(ingredient_x[i]-23,ingredient_y[i]+27,.92f,ingredient_short_names[i]);
     }
     render_draw_square(cauldron_x-34,cauldron_y-31,68,.15f,.17f,.17f,1,1);
     render_draw_square(cauldron_x-23,cauldron_y-20,46,.31f,.73f,.37f,1,1);
@@ -416,18 +492,26 @@ static void draw_scene(void){
         draw_text(app.x[i]+12,app.y[i]+14,1.7f,tag,1,1,1);
         int held=(i==0)?app.state.int_held1:app.state.int_held2;
         if(held>=0)render_draw_square(app.x[i]+35,app.y[i]-12,18,
-            colors[held][0],colors[held][1],colors[held][2],1,1);
+                             colors[held][0],colors[held][1],colors[held][2],1,1);
     }
-    char line[120];
+    char line[180];
+    int stage=app.state.int_stage;
     if(app.id==0)snprintf(line,sizeof(line),"Waiting for server / player assignment...");
-    else if(app.state.int_num_players<2)snprintf(line,sizeof(line),"Player %d  |  Waiting for Player 2...",app.id);
-    else if(app.state.int_phase==PHASE_COLLECT)snprintf(line,sizeof(line),
-        "Player %d  |  Next: %s  |  Bring to cauldron (E)",app.id,ingredient_names[app.state.int_stage]);
-    else if(app.state.int_phase==PHASE_WIN)snprintf(line,sizeof(line),"YOU WIN! The children are saved.");
-    else if(app.state.int_phase==PHASE_LOSE)snprintf(line,sizeof(line),"GAME OVER! Restart server to play again.");
-    else snprintf(line,sizeof(line),"Potion stage %d  |  P%d traces",app.state.int_stage+1,app.state.int_actor);
+    else if(app.state.int_phase==PHASE_WIN)snprintf(line,sizeof(line),
+        "YOU WIN! All %d recipes completed together.",RECIPES_TO_WIN);
+    else if(app.state.int_phase==PHASE_LOSE)snprintf(line,sizeof(line),
+        "GAME OVER! Restart server to play again.");
+    else if(app.state.int_num_players<2)snprintf(line,sizeof(line),
+        "Player %d | Waiting for Player 2 to join...",app.id);
+    else if(app.state.int_phase==PHASE_COLLECT && stage<app.state.int_recipe_length)
+        snprintf(line,sizeof(line),"P%d collects %s -> cauldron  |  You are P%d",
+            ((app.state.int_round+stage)%2)+1,ingredient_names[recipe[stage]],app.id);
+    else if(app.state.int_phase==PHASE_TRACE)snprintf(line,sizeof(line),
+        "P%d: TRACE the rune  |  P%d: prepare to stir",app.state.int_actor,
+        3-app.state.int_actor);
+    else snprintf(line,sizeof(line),"P%d: STIR the potion to continue",app.state.int_actor);
     rect(200,550,585,33,.94f,.85f,.71f,1);
-    label(213,558,1.25f,line);
+    label(213,558,1.18f,line);
 }
 static void draw_trace(void){
     if(!app.known_state || (app.state.int_phase!=PHASE_TRACE && app.state.int_phase!=PHASE_STIR))return;
@@ -476,7 +560,7 @@ static void handle_keys(GLFWwindow *w){
     app.prev_e=e;app.prev_q=q;
     if(app.id==0 || !app.known_state || app.state.int_phase!=PHASE_COLLECT)return;
     double now=glfwGetTime();
-    if(now-app.last_input_time < 0.028)return;
+    if(now-app.last_input_time < 0.055)return; /* ~18 Hz instead of ~36 Hz */
     char d='n';
     if(glfwGetKey(w,GLFW_KEY_W)==GLFW_PRESS || glfwGetKey(w,GLFW_KEY_UP)==GLFW_PRESS)d='u';
     else if(glfwGetKey(w,GLFW_KEY_S)==GLFW_PRESS || glfwGetKey(w,GLFW_KEY_DOWN)==GLFW_PRESS)d='d';
@@ -491,6 +575,7 @@ int main(void){
     app.token=(int)((((uint32_t)getpid()<<15) ^ (uint32_t)time(NULL))&0x7fffffff);
     if(app.token==0)app.token=1;
     app.shown_phase=-1;
+    app.shown_round=-1;
     if(!glfwInit()){fprintf(stderr,"GLFW init failed\n");return 1;}
     GLFWwindow *w=glfwCreateWindow(WIDTH,HEIGHT,"The Gingerbread Curse - DDS",NULL,NULL);
     if(!w){glfwTerminate();return 1;}

@@ -20,8 +20,13 @@ gcc $FLAGS client.c GameRules.c Render.c Trace.c messages.c -o client \
 # Standalone tests do not depend on DDS or GLFW
 gcc $FLAGS test_game.c GameRules.c Trace.c -o test_game -lm
 gcc $FLAGS test_threads.c ServerBridge.c GameRules.c -o test_threads -lm
+gcc $FLAGS test_recipe_preview.c GameRules.c -o test_recipe_preview -lm
+# Test server-authoritative countdowns, stage transitions, and expiration.
+gcc $FLAGS test_timers.c GameRules.c -o test_timers -lm
+./test_timers
 ./test_game
 ./test_threads
+./test_recipe_preview
 # Exercise the integrated reverse-trace -> potion action -> stir sequence.
 gcc $FLAGS test_trace_integration.c GameRules.c Trace.c -o test_trace_integration -lm
 ./test_trace_integration

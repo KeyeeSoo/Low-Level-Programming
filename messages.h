@@ -100,6 +100,16 @@ typedef struct GameState
   int32_t int_session;
   int32_t int_revision;
   int32_t int_num_players;
+  int32_t int_round;
+  int32_t int_recipes_completed;
+  int32_t int_used_mask;
+  int32_t int_recipe_length;
+  int32_t int_recipe0;
+  int32_t int_recipe1;
+  int32_t int_recipe2;
+  int32_t int_recipe3;
+  int32_t int_timer_remaining_ms;
+  int32_t int_timer_limit_ms;
 } GameState;
 
 extern const dds_topic_descriptor_t GameState_desc;

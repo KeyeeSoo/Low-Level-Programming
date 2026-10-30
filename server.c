@@ -81,8 +81,10 @@ static void *dds_worker(void *arg){
     dds_delete_qos(stream_qos);stream_qos=NULL;
     dds_delete_qos(reliable_qos);reliable_qos=NULL;
     uint64_t last_diagnostic=dds_monotonic_ms();
-    uint64_t last_publish=0;
-    int last_revision=-1;
+    uint64_t last_state_publish=0;
+    uint64_t last_position_publish[MAX_PLAYERS]={0};
+    int last_px[MAX_PLAYERS]={-1,-1},last_py[MAX_PLAYERS]={-1,-1};
+    int last_revision=-1,last_timer_second=-1;
     printf("[server DDS worker] running\n");
     while(!server_bridge_should_stop(&bridge)){
         dds_return_t n;
@@ -128,26 +130,50 @@ static void *dds_worker(void *arg){
         }
         GameRules snapshot;
         server_bridge_snapshot(&bridge,&snapshot); /* lock only for copy */
-        uint64_t now=dds_time();
-        if(!last_publish || now-last_publish>=DDS_MSECS(40) ||
-           last_revision!=snapshot.revision){
-            for(int i=0;i<MAX_PLAYERS;i++)if(snapshot.players[i].b_active){
+        uint64_t now=dds_monotonic_ms();
+        /* Position snapshots: at most 10 Hz while moving, 2 Hz when idle.
+         * This prevents a constant 25 Hz per-player stream while stationary. */
+        for(int i=0;i<MAX_PLAYERS;i++)if(snapshot.players[i].b_active){
+            int changed=snapshot.players[i].x!=last_px[i] ||
+                        snapshot.players[i].y!=last_py[i];
+            uint64_t elapsed=now-last_position_publish[i];
+            if((changed && elapsed>=100) || elapsed>=500 || !last_position_publish[i]){
                 Position pos={0};pos.int_player_id=i+1;
                 pos.int_x=snapshot.players[i].x;
                 pos.int_y=snapshot.players[i].y;
                 if(!dds_ok(dds_write(pw,&pos),"write Position"))goto cleanup;
                 atomic_fetch_add(&server_pos_tx,1);
+                last_px[i]=pos.int_x;last_py[i]=pos.int_y;
+                last_position_publish[i]=now;
             }
+        }
+        /* Send game-state changes immediately, timer seconds at ~1 Hz,
+         * plus a recovery refresh; no need to stream every 40 ms. */
+        int timer_second=(snapshot.time_remaining_ms+999)/1000;
+        if(last_revision!=snapshot.revision ||
+           last_timer_second!=timer_second ||
+           !last_state_publish || now-last_state_publish>=1500){
             GameState s={0};
             s.int_phase=snapshot.phase;s.int_stage=snapshot.stage;
             s.int_actor=snapshot.actor;s.int_mistakes=snapshot.mistakes;
             s.int_held1=snapshot.held[0];s.int_held2=snapshot.held[1];
             s.int_session=snapshot.session;s.int_revision=snapshot.revision;
             s.int_num_players=snapshot.num_players;
+            s.int_round=snapshot.round;
+            s.int_recipes_completed=snapshot.recipes_completed;
+            s.int_used_mask=snapshot.used_mask;
+            s.int_recipe_length=snapshot.recipe_len;
+            s.int_recipe0=snapshot.recipe[0];
+            s.int_recipe1=snapshot.recipe[1];
+            s.int_recipe2=snapshot.recipe[2];
+            s.int_recipe3=snapshot.recipe[3];
+            s.int_timer_remaining_ms=snapshot.time_remaining_ms;
+            s.int_timer_limit_ms=snapshot.time_limit_ms;
             if(!dds_ok(dds_write(sw,&s),"write GameState"))goto cleanup;
             atomic_fetch_add(&server_state_tx,1);
-            last_publish=now;
+            last_state_publish=now;
             last_revision=snapshot.revision;
+            last_timer_second=timer_second;
         }
         if(dds_monotonic_ms()-last_diagnostic>=2000){
             printf("[server DDS] alive: joins=%lu inputs=%lu actions=%lu posTx=%lu stateTx=%lu\n",
@@ -158,7 +184,7 @@ static void *dds_worker(void *arg){
                 (unsigned long)atomic_load(&server_state_tx));
             last_diagnostic=dds_monotonic_ms();
         }
-        dds_sleepfor(DDS_MSECS(5));
+        dds_sleepfor(DDS_MSECS(10));
     }
 cleanup:
     if(stream_qos)dds_delete_qos(stream_qos);
@@ -198,15 +224,33 @@ int main(void){
         server_bridge_destroy(&bridge);return EXIT_FAILURE;
     }
     printf("[server main] Game state loop running (authoritative owner)\n");
+    printf("[server main] Recipe 1 (%d ingredients):",game.recipe_len);
+    for(int i=0;i<game.recipe_len;i++)printf(" %s",ingredient_names[game.recipe[i]]);
+    printf("\n");
     /* ~60 game ticks per second. Main thread performs ALL game state writes.
      * DDS worker NEVER calls game_join/move/action, only queues events. */
     const struct timespec step={.tv_sec=0,.tv_nsec=16000000L};
     uint64_t last_main_log=dds_monotonic_ms();
     unsigned long main_ticks=0;
     while(!quitting && !server_bridge_should_stop(&bridge)){
+        /* Check the authoritative deadline before accepting player actions.
+           CLOCK_MONOTONIC is immune to wall-clock adjustments. */
+        int old_phase=game.phase,old_session=game.session;
+        game_tick(&game,dds_monotonic_ms());
+        if(game.session!=old_session && game.mistakes>0){
+            printf("[server main] stage timeout: oldPhase=%d newPhase=%d "
+                   "round=%d stage=%d mistakes=%d\n",
+                   old_phase,game.phase,game.round+1,game.stage+1,game.mistakes);
+        }
         ServerEvent event;
-        for(int k=0;k<1024 && server_bridge_pop_event(&bridge,&event);k++)
+        int previous_round=game.round;
+        for(int k=0;k<128 && server_bridge_pop_event(&bridge,&event);k++)
             process_event(&game,&event);
+        if(game.round!=previous_round){
+            printf("[server main] Recipe %d (%d ingredients):",game.round+1,game.recipe_len);
+            for(int i=0;i<game.recipe_len;i++)printf(" %s",ingredient_names[game.recipe[i]]);
+            printf("\n");
+        }
         server_bridge_publish(&bridge,&game);
         main_ticks++;
         uint64_t now_ms=dds_monotonic_ms();
@@ -215,8 +259,8 @@ int main(void){
             unsigned long dropped=bridge.dropped_events;
             unsigned queue=(bridge.event_write+SERVER_EVENT_CAP-bridge.event_read)%SERVER_EVENT_CAP;
             pthread_mutex_unlock(&bridge.mutex);
-            printf("[server MAIN] alive: ticks=%lu players=%d stage=%d phase=%d rev=%d queued=%u dropped=%lu\n",
-                main_ticks,game.num_players,game.stage,game.phase,game.revision,queue,dropped);
+            printf("[server MAIN] alive: ticks=%lu players=%d round=%d stage=%d phase=%d rev=%d queued=%u dropped=%lu\n",
+                main_ticks,game.num_players,game.round+1,game.stage,game.phase,game.revision,queue,dropped);
             last_main_log=now_ms;
         }
         nanosleep(&step,NULL);

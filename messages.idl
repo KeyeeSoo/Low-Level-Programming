@@ -48,4 +48,16 @@ struct GameState
     long int_session;
     long int_revision;
     long int_num_players;
+    // Recipe order is generated only by the server, never by clients.
+    long int_round;
+    long int_recipes_completed;
+    long int_used_mask;
+    long int_recipe_length;
+    long int_recipe0;
+    long int_recipe1;
+    long int_recipe2;
+    long int_recipe3;
+    // Server-provided countdown, in milliseconds. 0 while waiting/finished.
+    long int_timer_remaining_ms;
+    long int_timer_limit_ms;
 };
