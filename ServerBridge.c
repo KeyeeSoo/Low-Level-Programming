@@ -45,6 +45,25 @@ int server_bridge_pop_reply(ServerBridge *b,ServerJoinReply *reply){
     pthread_mutex_unlock(&b->mutex);
     return ok;
 }
+/* The auth and chat queues differ only in element type and capacity. */
+#define DEFINE_REPLY_QUEUE(suffix,type,items,head,tail,cap) \
+int server_bridge_push_##suffix(ServerBridge *b,const type *reply){ \
+    int ok=0; \
+    pthread_mutex_lock(&b->mutex); \
+    unsigned next=(b->tail+1)%(cap); \
+    if(next!=b->head){b->items[b->tail]=*reply;b->tail=next;ok=1;} \
+    pthread_mutex_unlock(&b->mutex); \
+    return ok; \
+} \
+int server_bridge_pop_##suffix(ServerBridge *b,type *out){ \
+    int ok=0; \
+    pthread_mutex_lock(&b->mutex); \
+    if(b->head!=b->tail){*out=b->items[b->head];b->head=(b->head+1)%(cap);ok=1;} \
+    pthread_mutex_unlock(&b->mutex); \
+    return ok; \
+}
+DEFINE_REPLY_QUEUE(auth,ServerAuthReply,auth_replies,auth_read,auth_write,SERVER_AUTH_REPLY_CAP)
+DEFINE_REPLY_QUEUE(chat,ServerChatReply,chat_replies,chat_read,chat_write,SERVER_CHAT_CAP)
 void server_bridge_publish(ServerBridge *b,const GameRules *g){
     pthread_mutex_lock(&b->mutex);
     b->published_state=*g;

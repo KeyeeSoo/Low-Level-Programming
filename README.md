@@ -62,12 +62,24 @@ The game can be tested on one laptop with two separate client windows; only the 
 - `messages.idl`: adds recipe order, round, completion count, used-ingredient mask to GameState.
 - `server.c`: sends those new fields in a snapshot via existing DDS worker.
 - `client.c`: renders shuffled recipe, hides used ingredients, selects rune based on ingredient ID, shows role prompts.
+- `Art.c` and `Art.h`: all game art, drawn from code (no image files). Static scenery is rendered once and cached in a texture; only animated parts are redrawn each frame.
+- `Render.c` and `Render.h`: shape primitives and TTF text. The handwritten font is `assets/PatrickHand-Regular.ttf` (SIL Open Font License, see `assets/PatrickHand-OFL.txt`), baked by `stb_truetype.h`. **Run the client from the project folder** so it can find the font.
+- `Accounts.c`, `AccountsMongo.c`: salted PBKDF2-SHA256 password hashing, plus the two account stores.
+- `AuthWorker.c`: a dedicated server thread for logins, so slow hashing and database waits never stall the game or the DDS thread.
+- `SecureDds.c`, `security/make_certs.sh`: DDS Security. All game traffic is authenticated and encrypted, and client certificates cannot publish server-only topics.
 - `Trace.c` and `Trace.h`: **unchanged** tested bidirectional tracing.
 - `ServerBridge.c` and `ServerBridge.h`: unchanged thread-safe handoff.
 - `test_game.c`, `test_trace_integration.c`, `test_threads.c`, `test_recipe_preview.c`: offline tests.
 
+## Accounts and the `.env` file
+
+The game opens on the login page: log in, sign up, or play as a guest (a temporary server-issued name that isn't saved). The main menu (Play, Settings, Quit) comes next. `assets/login.png` and `assets/main_menu.png` are AI-generated concept art, so declare them with your AI use; the menu image was edited to remove its Login sign. Accounts are stored in MongoDB when a `.env` file containing `MONGODB_URI` is present, and otherwise in a local `accounts.db` file. The game plays the same either way. `.env`, `accounts.db` and `security/generated/` are git-ignored and must not be committed or submitted. If MongoDB can't be reached, the server prints a warning and uses the local file.
+
+In the game, press Enter to chat and Esc to stop. The server verifies the sender, limits the rate and relays the message.
+
 ## Limitations
 
 - This implements **mandatory two-player co-op**, not a competitive race. Competitive mode would require independent player recipe states and scoring, and is better added as a selectable mode in a separate change.
-- Joining does not currently include a disconnect/rejoin protocol; close the old processes and restart the server for a fresh session.
+- Joining does not currently include a disconnect/rejoin protocol. **Play Again** starts a new game with the same two players, but a player who closed their window can't log back in ("already in the game") until the server restarts.
+- DDS Security keeps game data, logins and chat private, but by design the discovery announcement shows the machine name and the handshake shows the permissions file (topic names).
 - I verified C syntax using interface stubs and ran headless logic/tracing/thread tests; a complete live DDS+OpenGL playtest still needs to happen on your laptop.

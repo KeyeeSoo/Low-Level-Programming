@@ -21,11 +21,25 @@
 #define TRACE_TIME_MS   40000
 #define STIR_TIME_MS    25000
 
+/* Login and chat limits, shared by client and server. They match messages.idl. */
+#define USERNAME_MIN 3
+#define USERNAME_MAX 16
+#define PASSWORD_MIN 4
+#define PASSWORD_MAX 32
+#define CHAT_MAX 80
+
+enum { AUTH_MODE_LOGIN=1, AUTH_MODE_REGISTER=2, AUTH_MODE_GUEST=3 };
+enum { AUTH_OK=0, AUTH_BAD_CREDENTIALS=1, AUTH_NAME_TAKEN=2, AUTH_INVALID_INPUT=3,
+       AUTH_ALREADY_PLAYING=4, AUTH_GAME_FULL=5, AUTH_STORE_ERROR=6 };
+
 enum { PHASE_COLLECT=0, PHASE_TRACE=1, PHASE_STIR=2, PHASE_WIN=3, PHASE_LOSE=4 };
 enum { ACTION_INTERACT=1, ACTION_DROP=2, ACTION_TRACE_OK=3,
-       ACTION_TRACE_BAD=4, ACTION_STIR_OK=5 };
+       ACTION_TRACE_BAD=4, ACTION_STIR_OK=5, ACTION_RESTART=6 };
 
-typedef struct {int b_active, x, y, token;} Player;
+typedef struct {
+    int b_active, x, y, token;
+    char name[USERNAME_MAX+1]; /* Verified account name, set by the server. */
+} Player;
 typedef struct {
     Player players[MAX_PLAYERS];
     int num_players, phase, stage, actor, mistakes, held[MAX_PLAYERS];

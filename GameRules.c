@@ -132,6 +132,11 @@ void game_init(GameRules *g){
                   (uint32_t)(uintptr_t)g;
     game_init_seed(g,seed);
 }
+static void place_at_start(Player *p,int index){
+    p->x=555;
+    if(index==0)p->x=355;
+    p->y=340;
+}
 int game_join(GameRules *g,int token){
     if(token<=0)return 0;
     for(int i=0;i<MAX_PLAYERS;i++)
@@ -139,7 +144,7 @@ int game_join(GameRules *g,int token){
     for(int i=0;i<MAX_PLAYERS;i++)if(!g->players[i].b_active){
         Player *p=&g->players[i];
         p->b_active=1;p->token=token;
-        p->x=(i==0)?355:555;p->y=340;
+        place_at_start(p,i);
         ++g->num_players;++g->revision;
         /* Countdown begins only after both players have joined. */
         if(g->num_players==MAX_PLAYERS)begin_phase_timer(g);
@@ -168,9 +173,31 @@ void game_move(GameRules *g,int id,int token,char direction){
     if(x<211 || x>WIDTH-SQ_WIDTH-10 || y<143 || y>HEIGHT-SQ_WIDTH-9)return;
     if(!detect_collision(g->players,id,x,y)){p->x=x;p->y=y;}
 }
+/* Start a fresh game with the same two players, who stay logged in and seated. */
+static void game_restart(GameRules *g){
+    for(int i=0;i<MAX_PLAYERS;i++){
+        if(g->players[i].b_active)place_at_start(&g->players[i],i);
+        g->held[i]=-1;
+    }
+    g->phase=PHASE_COLLECT;
+    g->stage=0;
+    g->actor=0;
+    g->mistakes=0;
+    g->used_mask=0;
+    g->round=0;
+    g->recipes_completed=0;
+    ++g->session; /* Reject any late results from the finished game. */
+    shuffle_recipe(g,NULL,0);
+    begin_phase_timer(g);
+    ++g->revision;
+}
 void game_action(GameRules *g,int id,int token,int action,int session){
-    if(!game_valid_player(g,id,token) ||
-       g->phase==PHASE_WIN || g->phase==PHASE_LOSE)return;
+    if(!game_valid_player(g,id,token))return;
+    if(g->phase==PHASE_WIN || g->phase==PHASE_LOSE){
+        /* Restarting is the only action a finished game accepts. */
+        if(action==ACTION_RESTART)game_restart(g);
+        return;
+    }
     int i=id-1;
     if(action==ACTION_DROP){
         if(g->phase==PHASE_COLLECT && g->held[i]>=0){

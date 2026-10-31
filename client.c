@@ -1,3 +1,4 @@
+#define _DEFAULT_SOURCE /* getentropy() */
 #define _POSIX_C_SOURCE 200809L
 /* Gingerbread Curse client, adapted from the original client.c:
    Same JoinRequest/JoinResponse/Input/Position DDS communication, new GameState,
@@ -16,20 +17,47 @@
 #include "messages.h"
 #include "GameRules.h"
 #include "Render.h"
+#include "Art.h"
 #include "Trace.h"
-#define STB_EASY_FONT_IMPLEMENTATION
-#include "stb_easy_font.h"
+#include "SecureDds.h"
 
 #define PI 3.14159265358979323846f
 
-static const float ingredient_colors[INGREDIENT_COUNT][3] = {
-    {.35f,.67f,.37f},{.81f,.48f,.23f},{.52f,.35f,.70f},{.30f,.59f,.83f},
-    {.38f,.62f,.52f},{.72f,.26f,.49f},{.86f,.66f,.29f},{.74f,.43f,.28f},
-    {.40f,.68f,.81f},{.55f,.46f,.35f}
-};
+#define CHAT_LINE_LENGTH (CHAT_MAX+USERNAME_MAX+4)
+#define CHAT_HISTORY 32
+/* How long to wait for the server before telling the player it isn't there. */
+#define LOGIN_TIMEOUT_S 12.0
+
+typedef enum { SCREEN_MENU, SCREEN_LOGIN, SCREEN_SETTINGS, SCREEN_GAME } Screen;
+
+/* Window sizes offered in Settings, as a fraction of the full canvas. */
+static const float window_size_scales[WINDOW_SIZE_COUNT]={0.7f,1.0f,1.25f};
+#define WINDOW_SIZE_NORMAL 1
 
 /* Rendering and tracing belong exclusively to the GLFW/main thread. */
 typedef struct {
+    Screen screen;
+    /* Main menu and settings. Settings last for this run of the game. */
+    GLFWwindow *window;
+    MenuHit menu_hover;
+    char menu_status[96];
+    int menu_status_is_error;
+    char player_name[USERNAME_MAX+1];
+    SettingsHit settings_hover;
+    int window_size,animations_on;
+    /* Login form. */
+    char username[USERNAME_MAX+1],password[PASSWORD_MAX+1];
+    int show_password;
+    LoginHit login_focus,login_hover;
+    int play_again_hover;
+    char login_message[96];
+    int login_message_is_error,login_busy;
+    double login_started;
+    /* Chat: messages are wrapped once on arrival, not on every frame. */
+    char chat_lines[CHAT_HISTORY][CHAT_LINE_LENGTH];
+    int chat_line_players[CHAT_HISTORY],chat_line_count;
+    char chat_input[CHAT_MAX+1];
+    int chat_focused;
     int token,id,known_state;
     int visible[MAX_PLAYERS],x[MAX_PLAYERS],y[MAX_PLAYERS];
     GameState state;
@@ -37,6 +65,9 @@ typedef struct {
     int shown_phase,shown_stage,shown_session,shown_mistakes,shown_round;
     int pending_result,prev_e,prev_q;
     double last_input_time;
+    /* Purely visual walk state, derived from the server's position updates. */
+    int drawn_x[MAX_PLAYERS],drawn_y[MAX_PLAYERS],facing[MAX_PLAYERS];
+    double last_step_time[MAX_PLAYERS];
     int network_failed;
     char network_error[256];
 } Client;
@@ -45,7 +76,13 @@ static Client app;
 /* DDS operates exclusively on the network thread.  Only this small bridge is
  * shared with the main thread. Never hold its mutex during DDS or OpenGL calls. */
 #define ACTION_QUEUE_CAP 32
+#define CHAT_QUEUE_CAP 16
 typedef struct { int code,session; } QueuedAction;
+typedef struct {
+    int player_id;
+    char name[USERNAME_MAX+1];
+    char text[CHAT_MAX+1];
+} QueuedChat;
 typedef struct {
     pthread_mutex_t mutex;
     pthread_t thread;
@@ -57,6 +94,18 @@ typedef struct {
     char next_direction;
     QueuedAction actions[ACTION_QUEUE_CAP];
     int action_read, action_write;
+    /* Login: main fills these in; the worker sends until answered. */
+    int auth_pending,auth_mode,auth_nonce;
+    char auth_username[USERNAME_MAX+1],auth_password[PASSWORD_MAX+1];
+    int auth_done,auth_result,session_token;
+    char auth_name[USERNAME_MAX+1];
+    /* Play sets join_requested; the worker reports back if the seat is refused. */
+    int join_requested,join_refused;
+    /* Chat in both directions. */
+    char chat_out[CHAT_QUEUE_CAP][CHAT_MAX+1];
+    int chat_out_read,chat_out_write;
+    QueuedChat chat_in[CHAT_QUEUE_CAP];
+    int chat_in_read,chat_in_write;
 } NetworkBridge;
 static NetworkBridge net = {.mutex=PTHREAD_MUTEX_INITIALIZER};
 static atomic_ulong client_pos_rx=0, client_state_rx=0;
@@ -81,36 +130,6 @@ static dds_qos_t *reliable_qos(void){
     return q;
 }
 
-static void rect(float x,float y,float w,float h,float r,float g,float b,float a){
-    glPushAttrib(GL_ENABLE_BIT|GL_CURRENT_BIT|GL_COLOR_BUFFER_BIT);
-    glDisable(GL_TEXTURE_2D);glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
-    glColor4f(r,g,b,a);glBegin(GL_QUADS);
-    glVertex2f(x,y);glVertex2f(x+w,y);glVertex2f(x+w,y+h);glVertex2f(x,y+h);
-    glEnd();glPopAttrib();
-}
-static void frame(float x,float y,float w,float h,float r,float g,float b){
-    glPushAttrib(GL_ENABLE_BIT|GL_CURRENT_BIT|GL_LINE_BIT);
-    glDisable(GL_TEXTURE_2D);glColor3f(r,g,b);glLineWidth(2.0f);
-    glBegin(GL_LINE_LOOP);glVertex2f(x,y);glVertex2f(x+w,y);
-    glVertex2f(x+w,y+h);glVertex2f(x,y+h);glEnd();glPopAttrib();
-}
-static void draw_text(float x,float y,float scale,const char *msg,float r,float g,float b){
-    char buf[32768];
-    int n=stb_easy_font_print(0,0,(char*)msg,NULL,buf,sizeof(buf));
-    if(n<=0)return;
-    glPushAttrib(GL_CURRENT_BIT|GL_ENABLE_BIT);
-    glDisable(GL_TEXTURE_2D);glColor3f(r,g,b);
-    glPushMatrix();glTranslatef(x,y,0);glScalef(scale,scale,1);
-    glEnableClientState(GL_VERTEX_ARRAY);
-    glVertexPointer(2,GL_FLOAT,16,buf);
-    glDrawArrays(GL_QUADS,0,n*4);
-    glDisableClientState(GL_VERTEX_ARRAY);
-    glPopMatrix();glPopAttrib();
-}
-static void label(float x,float y,float scale,const char *msg){
-    draw_text(x,y,scale,msg,.18f,.14f,.19f);
-}
 /* Input is queued to the DDS worker; OpenGL callbacks never invoke DDS. */
 static void send_input(char dir){
     pthread_mutex_lock(&net.mutex);
@@ -200,11 +219,103 @@ static void receive_state(const GameState *s){
         prepare_trace();
     }
 }
+/* Every frame travels through WSLg's Remote Desktop link to reach the screen, and
+ * flooding it makes that link stop responding. So input is checked at about 60 Hz,
+ * but a frame is only drawn when something changed or an animation is due. */
+#define MIN_RENDER_INTERVAL_S (1.0/30.0)
+static int redraw_needed=1;
+static void set_login_message(const char *message,int is_error){
+    redraw_needed=1;
+    snprintf(app.login_message,sizeof(app.login_message),"%s",message);
+    app.login_message_is_error=is_error;
+}
+static void set_menu_status(const char *message,int is_error){
+    redraw_needed=1;
+    snprintf(app.menu_status,sizeof(app.menu_status),"%s",message);
+    app.menu_status_is_error=is_error;
+}
+static void show_logged_in_status(void){
+    char status[64];
+    snprintf(status,sizeof(status),"Logged in as %s. Press Play!",app.player_name);
+    set_menu_status(status,0);
+}
+static void finish_login(int result,int session_token,const char *name){
+    app.login_busy=0;
+    switch(result){
+        case AUTH_OK:
+            app.token=session_token;
+            snprintf(app.player_name,sizeof(app.player_name),"%s",name);
+            app.screen=SCREEN_MENU;
+            memset(app.password,0,sizeof(app.password));
+            app.show_password=0;
+            set_login_message("",0);
+            show_logged_in_status();
+            break;
+        case AUTH_BAD_CREDENTIALS:
+            set_login_message("Wrong username or password.",1);break;
+        case AUTH_NAME_TAKEN:
+            set_login_message("That username is taken. Try another, or log in.",1);break;
+        case AUTH_INVALID_INPUT:
+            set_login_message("Name: 3-16 letters, digits, _ or -. Password: 4-32 characters.",1);break;
+        case AUTH_ALREADY_PLAYING:
+            set_login_message("That player is already in the game.",1);break;
+        case AUTH_GAME_FULL:
+            set_login_message("The game already has two players.",1);break;
+        default:
+            set_login_message("The server could not check that. Try again.",1);break;
+    }
+}
+/* Runs once per message, so the word-wrap is never repeated while drawing. */
+static void append_chat_line(const char *text,int player){
+    if(app.chat_line_count==CHAT_HISTORY){
+        memmove(app.chat_lines[0],app.chat_lines[1],sizeof(app.chat_lines[0])*(CHAT_HISTORY-1));
+        memmove(&app.chat_line_players[0],&app.chat_line_players[1],
+                sizeof(app.chat_line_players[0])*(CHAT_HISTORY-1));
+        app.chat_line_count--;
+    }
+    snprintf(app.chat_lines[app.chat_line_count],CHAT_LINE_LENGTH,"%s",text);
+    app.chat_line_players[app.chat_line_count++]=player;
+}
+static void add_chat_message(const QueuedChat *message){
+    char full[CHAT_LINE_LENGTH],line[CHAT_LINE_LENGTH];
+    snprintf(full,sizeof(full),"%s: %s",message->name,message->text);
+    const char *rest=full;
+    while(*rest!='\0'){
+        /* Take the longest prefix that fits, preferring to break at a space. */
+        size_t fit=0,last_space=0,total=strlen(rest);
+        while(fit<total){
+            memcpy(line,rest,fit+1);line[fit+1]='\0';
+            if(render_text_width(CHAT_LINE_PX,line)>CHAT_LINE_WIDTH)break;
+            if(rest[fit]==' ')last_space=fit;
+            fit++;
+        }
+        size_t take=fit;
+        if(fit<total && last_space>0)take=last_space;
+        if(take==0)take=1;
+        memcpy(line,rest,take);line[take]='\0';
+        append_chat_line(line,message->player_id-1);
+        rest+=take;
+        while(*rest==' ')rest++;
+    }
+}
 /* Copy the latest DDS snapshot to the main/GLFW thread under the mutex.
  * prepare_trace() is only called from this main thread. */
 static void network_snapshot(void){
     GameState state={0};int have_state,failed;
+    int auth_done=0,auth_result=0,session_token=0,join_refused=0;
+    char auth_name[USERNAME_MAX+1]="";
+    QueuedChat incoming[CHAT_QUEUE_CAP];int incoming_count=0;
     pthread_mutex_lock(&net.mutex);
+    if(net.auth_done){
+        auth_done=1;auth_result=net.auth_result;session_token=net.session_token;
+        snprintf(auth_name,sizeof(auth_name),"%s",net.auth_name);
+        net.auth_done=0;
+    }
+    if(net.join_refused){join_refused=1;net.join_refused=0;net.join_requested=0;}
+    while(net.chat_in_read!=net.chat_in_write){
+        incoming[incoming_count++]=net.chat_in[net.chat_in_read];
+        net.chat_in_read=(net.chat_in_read+1)%CHAT_QUEUE_CAP;
+    }
     app.id=net.id;
     memcpy(app.visible,net.visible,sizeof(app.visible));
     memcpy(app.x,net.x,sizeof(app.x));
@@ -216,6 +327,12 @@ static void network_snapshot(void){
     pthread_mutex_unlock(&net.mutex);
     app.network_failed=failed;
     if(have_state)receive_state(&state);
+    if(auth_done)finish_login(auth_result,session_token,auth_name);
+    if(join_refused){
+        app.screen=SCREEN_MENU;
+        set_menu_status("Can't join: the game is full, or you're already in it.",1);
+    }
+    for(int i=0;i<incoming_count;i++)add_chat_message(&incoming[i]);
 }
 
 static int network_error(dds_return_t rc,const char *operation){
@@ -233,10 +350,11 @@ static int network_error(dds_return_t rc,const char *operation){
  * readers and writers are created, used and deleted on this single thread. */
 static void *network_worker(void *unused){
     (void)unused;
-    dds_entity_t participant=dds_create_participant(DDS_DOMAIN_DEFAULT,NULL,NULL);
-    if(network_error(participant,"dds_create_participant"))return NULL;
+    dds_entity_t participant=secure_create_participant("client");
+    if(network_error(participant,"secure participant (run.bat rebuilds its certificates)"))return NULL;
     dds_entity_t jt,rt,it,pt,at,st;
     dds_entity_t jw,rr,iw,pr,aw,sr;
+    dds_entity_t aqt,art,cst,cmt,aqw,arr,csw,cmr;
     dds_qos_t *stream_qos=best_effort_qos(),*rel_qos=reliable_qos();
     if(!stream_qos || !rel_qos){
         fprintf(stderr,"DDS worker: unable to allocate QoS\n");
@@ -256,6 +374,14 @@ static void *network_worker(void *unused){
     CREATE_DDS(pt,dds_create_topic(participant,&Position_desc,"Position",NULL,NULL),"create Position topic");
     CREATE_DDS(at,dds_create_topic(participant,&GameAction_desc,"GameAction",NULL,NULL),"create GameAction topic");
     CREATE_DDS(st,dds_create_topic(participant,&GameState_desc,"GameState",NULL,NULL),"create GameState topic");
+    CREATE_DDS(aqt,dds_create_topic(participant,&AuthRequest_desc,"AuthRequest",NULL,NULL),"create AuthRequest topic");
+    CREATE_DDS(art,dds_create_topic(participant,&AuthResponse_desc,"AuthResponse",NULL,NULL),"create AuthResponse topic");
+    CREATE_DDS(cst,dds_create_topic(participant,&ChatSend_desc,"ChatSend",NULL,NULL),"create ChatSend topic");
+    CREATE_DDS(cmt,dds_create_topic(participant,&ChatMessage_desc,"ChatMessage",NULL,NULL),"create ChatMessage topic");
+    CREATE_DDS(aqw,dds_create_writer(participant,aqt,rel_qos,NULL),"create AuthRequest writer");
+    CREATE_DDS(arr,dds_create_reader(participant,art,rel_qos,NULL),"create AuthResponse reader");
+    CREATE_DDS(csw,dds_create_writer(participant,cst,rel_qos,NULL),"create ChatSend writer");
+    CREATE_DDS(cmr,dds_create_reader(participant,cmt,rel_qos,NULL),"create ChatMessage reader");
     CREATE_DDS(jw,dds_create_writer(participant,jt,rel_qos,NULL),"create JoinRequest writer");
     CREATE_DDS(rr,dds_create_reader(participant,rt,rel_qos,NULL),"create JoinResponse reader");
     CREATE_DDS(iw,dds_create_writer(participant,it,stream_qos,NULL),"create Input writer");
@@ -267,9 +393,11 @@ static void *network_worker(void *unused){
     dds_delete_qos(rel_qos);rel_qos=NULL;
     uint64_t last_network_log=monotonic_ms();
     uint64_t last_join=0;
-    int local_id=0;
+    uint64_t last_auth=0;
+    int last_auth_nonce=0;
+    int local_id=0,local_token=0;
     int running=1;
-    printf("DDS worker started (pid %ld, token %d)\n",(long)getpid(),app.token);
+    printf("DDS worker started with DDS Security (pid %ld)\n",(long)getpid());
     while(running){
         int stop;
         pthread_mutex_lock(&net.mutex);
@@ -279,19 +407,80 @@ static void *network_worker(void *unused){
 
         dds_return_t n;
         dds_sample_info_t info[1];
+        AuthResponse auth={0};void *auths[1]={&auth};
+        for(int k=0;k<16;k++){
+            n=dds_take(arr,auths,info,1,1);
+            if(network_error(n,"take AuthResponse")){running=0;break;}
+            if(n==0)break;
+            if(!info[0].valid_data)continue;
+            pthread_mutex_lock(&net.mutex);
+            /* The nonce ties the answer to this client's request. */
+            if(net.auth_pending && auth.int_nonce==net.auth_nonce){
+                net.auth_pending=0;net.auth_done=1;
+                net.auth_result=auth.int_result;net.session_token=auth.int_session_token;
+                memset(net.auth_password,0,sizeof(net.auth_password));
+                snprintf(net.auth_name,sizeof(net.auth_name),"%s",auth.str_username);
+                if(auth.int_result==AUTH_OK)local_token=auth.int_session_token;
+            }
+            pthread_mutex_unlock(&net.mutex);
+        }
+        if(!running)break;
+        /* Discovery can take a moment, so keep sending until the server answers. */
+        {
+            AuthRequest request={0};int send_auth=0;
+            uint64_t now_ns=dds_time();
+            pthread_mutex_lock(&net.mutex);
+            if(net.auth_pending && (net.auth_nonce!=last_auth_nonce ||
+                                    now_ns-last_auth>=DDS_MSECS(750))){
+                send_auth=1;
+                request.int_nonce=net.auth_nonce;request.int_mode=net.auth_mode;
+                snprintf(request.str_username,sizeof(request.str_username),"%s",net.auth_username);
+                snprintf(request.str_password,sizeof(request.str_password),"%s",net.auth_password);
+                last_auth_nonce=net.auth_nonce;last_auth=now_ns;
+            }
+            pthread_mutex_unlock(&net.mutex);
+            if(send_auth){
+                dds_return_t rc=dds_write(aqw,&request);
+                memset(&request,0,sizeof(request));
+                if(network_error(rc,"write AuthRequest"))break;
+            }
+        }
+        ChatMessage chat={0};void *chats[1]={&chat};
+        for(int k=0;k<16;k++){
+            n=dds_take(cmr,chats,info,1,1);
+            if(network_error(n,"take ChatMessage")){running=0;break;}
+            if(n==0)break;
+            if(!info[0].valid_data || chat.int_player_id<1 || chat.int_player_id>MAX_PLAYERS)continue;
+            pthread_mutex_lock(&net.mutex);
+            int next=(net.chat_in_write+1)%CHAT_QUEUE_CAP;
+            if(next!=net.chat_in_read){
+                QueuedChat *slot=&net.chat_in[net.chat_in_write];
+                slot->player_id=chat.int_player_id;
+                snprintf(slot->name,sizeof(slot->name),"%s",chat.str_username);
+                snprintf(slot->text,sizeof(slot->text),"%s",chat.str_text);
+                net.chat_in_write=next;
+            }
+            pthread_mutex_unlock(&net.mutex);
+        }
+        if(!running)break;
         JoinResponse resp={0};void *rs[1]={&resp};
         for(int k=0;k<64;k++){
             n=dds_take(rr,rs,info,1,1);
             if(network_error(n,"take JoinResponse")){running=0;break;}
             if(n==0)break;
-            if(info[0].valid_data && resp.int_client_token==app.token && !local_id){
+            if(info[0].valid_data && local_token && resp.int_client_token==local_token && !local_id){
                 if(resp.int_player_id>=1 && resp.int_player_id<=MAX_PLAYERS){
                     local_id=resp.int_player_id;
                     pthread_mutex_lock(&net.mutex);
                     net.id=local_id;
                     pthread_mutex_unlock(&net.mutex);
                     printf("Joined as Player %d\n",local_id);
-                } else fprintf(stderr,"Join rejected: server full or invalid ID\n");
+                } else {
+                    fprintf(stderr,"Join rejected: server full or invalid ID\n");
+                    pthread_mutex_lock(&net.mutex);
+                    if(net.join_requested)net.join_refused=1;
+                    pthread_mutex_unlock(&net.mutex);
+                }
             }
         }
         if(!running)break;
@@ -324,8 +513,12 @@ static void *network_worker(void *unused){
         }
         if(!running)break;
         uint64_t now=dds_time();
-        if(!local_id && (!last_join || now-last_join>=DDS_MSECS(750))){
-            JoinRequest req={0};req.b_dummy=1;req.int_client_token=app.token;
+        /* Joining needs the session token, so it can only happen after login. */
+        pthread_mutex_lock(&net.mutex);
+        int join_requested=net.join_requested;
+        pthread_mutex_unlock(&net.mutex);
+        if(join_requested && local_token && !local_id && (!last_join || now-last_join>=DDS_MSECS(750))){
+            JoinRequest req={0};req.b_dummy=1;req.int_client_token=local_token;
             if(network_error(dds_write(jw,&req),"write JoinRequest"))break;
             atomic_fetch_add(&client_joins_tx,1);
             last_join=now;
@@ -339,17 +532,29 @@ static void *network_worker(void *unused){
             actions[n_actions++]=net.actions[net.action_read];
             net.action_read=(net.action_read+1)%ACTION_QUEUE_CAP;
         }
+        char chat_out[CHAT_QUEUE_CAP][CHAT_MAX+1];int n_chat=0;
+        while(net.chat_out_read!=net.chat_out_write){
+            memcpy(chat_out[n_chat++],net.chat_out[net.chat_out_read],CHAT_MAX+1);
+            net.chat_out_read=(net.chat_out_read+1)%CHAT_QUEUE_CAP;
+        }
         pthread_mutex_unlock(&net.mutex);
         if(local_id){
+            for(int i=0;i<n_chat;i++){
+                ChatSend message={0};
+                message.int_player_id=local_id;message.int_client_token=local_token;
+                memcpy(message.str_text,chat_out[i],sizeof(message.str_text));
+                if(network_error(dds_write(csw,&message),"write ChatSend")){running=0;break;}
+            }
+            if(!running)break;
             if(direction!='n'){
                 Input in={0};in.int_player_id=local_id;
-                in.int_client_token=app.token;in.ch_direction=direction;
+                in.int_client_token=local_token;in.ch_direction=direction;
                 if(network_error(dds_write(iw,&in),"write Input"))break;
                 atomic_fetch_add(&client_move_tx,1);
             }
             for(int i=0;i<n_actions;i++){
                 GameAction a={0};a.int_player_id=local_id;
-                a.int_client_token=app.token;
+                a.int_client_token=local_token;
                 a.int_action=actions[i].code;
                 a.int_session=actions[i].session;
                 if(network_error(dds_write(aw,&a),"write GameAction")){running=0;break;}
@@ -378,13 +583,224 @@ static int can_trace(void){
         (app.state.int_phase==PHASE_TRACE || app.state.int_phase==PHASE_STIR) &&
         !app.pending_result;
 }
+/* The canvas is letterboxed into the window so it can be resized to fit small
+ * screens. Tracing always works in canvas coordinates, whatever the window size. */
+static float view_scale=1.0f,view_x=0.0f,view_y=0.0f;
+static void framebuffer_resized(GLFWwindow *w,int fb_w,int fb_h){
+    int win_w,win_h;glfwGetWindowSize(w,&win_w,&win_h);
+    if(fb_w<=0 || fb_h<=0 || win_w<=0 || win_h<=0)return; /* Minimised. */
+    float fit_x=(float)fb_w/CANVAS_W,fit_y=(float)fb_h/CANVAS_H;
+    float fit=fit_x;
+    if(fit_y<fit)fit=fit_y;
+    int vw=(int)(CANVAS_W*fit),vh=(int)(CANVAS_H*fit);
+    int vx=(fb_w-vw)/2,vy=(fb_h-vh)/2;
+    glViewport(vx,vy,vw,vh);
+    /* Cursor positions arrive in window units, not framebuffer pixels. */
+    float pixels_per_unit=(float)fb_w/(float)win_w;
+    view_scale=fit/pixels_per_unit;
+    view_x=(float)vx/pixels_per_unit;
+    view_y=(float)vy/pixels_per_unit;
+    art_invalidate_static();
+    redraw_needed=1;
+}
+static TracePoint window_to_canvas(double x,double y){
+    return (TracePoint){((float)x-view_x)/view_scale,((float)y-view_y)/view_scale};
+}
+static void submit_login(int mode){
+    if(app.login_busy)return;
+    if(mode!=AUTH_MODE_GUEST && (app.username[0]=='\0' || app.password[0]=='\0')){
+        if(mode==AUTH_MODE_REGISTER)set_login_message("Pick a username and password, then click Sign Up.",1);
+        else set_login_message("Type your username and password.",1);
+        return;
+    }
+    if(mode!=AUTH_MODE_GUEST && (strlen(app.username)<USERNAME_MIN || strlen(app.password)<PASSWORD_MIN)){
+        set_login_message("Name: 3-16 letters, digits, _ or -. Password: 4-32 characters.",1);
+        return;
+    }
+    int nonce=0;
+    /* A fresh random nonce per attempt, so a retry can never reuse an old answer. */
+    if(getentropy(&nonce,sizeof(nonce))!=0)nonce=(int)time(NULL);
+    nonce&=0x7fffffff;
+    if(nonce==0)nonce=1;
+    pthread_mutex_lock(&net.mutex);
+    net.auth_nonce=nonce;net.auth_mode=mode;net.auth_pending=1;
+    /* A guest has no credentials to send, even if something was typed in the form. */
+    net.auth_username[0]='\0';
+    net.auth_password[0]='\0';
+    if(mode!=AUTH_MODE_GUEST){
+        snprintf(net.auth_username,sizeof(net.auth_username),"%s",app.username);
+        snprintf(net.auth_password,sizeof(net.auth_password),"%s",app.password);
+    }
+    pthread_mutex_unlock(&net.mutex);
+    app.login_busy=1;
+    app.login_started=glfwGetTime();
+    set_login_message("Checking with the server...",0);
+}
+static void check_login_timeout(void){
+    if(!app.login_busy || glfwGetTime()-app.login_started<LOGIN_TIMEOUT_S)return;
+    pthread_mutex_lock(&net.mutex);
+    net.auth_pending=0;
+    memset(net.auth_password,0,sizeof(net.auth_password));
+    pthread_mutex_unlock(&net.mutex);
+    app.login_busy=0;
+    set_login_message("Can't reach the server. Is it running?",1);
+}
+static void press_play(void){
+    pthread_mutex_lock(&net.mutex);
+    net.join_requested=1;
+    pthread_mutex_unlock(&net.mutex);
+    app.screen=SCREEN_GAME;
+}
+static void apply_window_size(int size){
+    float scale=window_size_scales[size];
+    int area_x,area_y,area_w=0,area_h=0;
+    GLFWmonitor *monitor=glfwGetPrimaryMonitor();
+    if(monitor)glfwGetMonitorWorkarea(monitor,&area_x,&area_y,&area_w,&area_h);
+    /* Never open larger than the screen can show. */
+    if(area_h>0 && CANVAS_H*scale>area_h-60)scale=(float)(area_h-60)/CANVAS_H;
+    app.window_size=size;
+    glfwSetWindowSize(app.window,(int)(CANVAS_W*scale),(int)(CANVAS_H*scale));
+}
+static void settings_clicked(SettingsHit hit){
+    switch(hit){
+        case SETTINGS_HIT_SIZE_SMALL:
+        case SETTINGS_HIT_SIZE_NORMAL:
+        case SETTINGS_HIT_SIZE_LARGE:
+            apply_window_size((int)hit-(int)SETTINGS_HIT_SIZE_SMALL);break;
+        case SETTINGS_HIT_ANIMATIONS_ON:app.animations_on=1;break;
+        case SETTINGS_HIT_ANIMATIONS_OFF:app.animations_on=0;break;
+        case SETTINGS_HIT_BACK:app.screen=SCREEN_MENU;break;
+        default:break;
+    }
+}
+static void send_chat(void){
+    if(app.chat_input[0]!='\0'){
+        pthread_mutex_lock(&net.mutex);
+        int next=(net.chat_out_write+1)%CHAT_QUEUE_CAP;
+        if(next!=net.chat_out_read){
+            memcpy(net.chat_out[net.chat_out_write],app.chat_input,sizeof(app.chat_input));
+            net.chat_out_write=next;
+        }
+        pthread_mutex_unlock(&net.mutex);
+    }
+    app.chat_input[0]='\0';
+}
+/* Appends a printable character, respecting the buffer's size. */
+static void append_char(char *buffer,size_t size,unsigned codepoint){
+    size_t length=strlen(buffer);
+    if(codepoint<32 || codepoint>126 || length+1>=size)return;
+    buffer[length]=(char)codepoint;buffer[length+1]='\0';
+}
+static void remove_char(char *buffer){
+    size_t length=strlen(buffer);
+    if(length>0)buffer[length-1]='\0';
+}
+/* Diagnostics for client logs. Which keys were pressed is never logged: the player
+ * may be typing a password. */
+static void log_input(const char *what,float x,float y,int hit){
+    fprintf(stderr,"[input] %s at %.0f,%.0f screen=%d hit=%d\n",what,x,y,(int)app.screen,hit);
+}
+static void window_focus_changed(GLFWwindow *w,int focused){
+    (void)w;
+    if(focused)fprintf(stderr,"[input] window gained focus\n");
+    else fprintf(stderr,"[input] window lost focus\n");
+    redraw_needed=1;
+}
+static void window_needs_refresh(GLFWwindow *w){
+    (void)w;
+    redraw_needed=1;
+}
+static void character_typed(GLFWwindow *w,unsigned codepoint){
+    (void)w;
+    redraw_needed=1;
+    if(app.screen==SCREEN_LOGIN){
+        if(app.login_busy)return;
+        if(app.login_focus==LOGIN_HIT_USERNAME)append_char(app.username,sizeof(app.username),codepoint);
+        else if(app.login_focus==LOGIN_HIT_PASSWORD)append_char(app.password,sizeof(app.password),codepoint);
+    }else if(app.chat_focused){
+        append_char(app.chat_input,sizeof(app.chat_input),codepoint);
+    }
+}
+static void key_event(GLFWwindow *w,int key,int scancode,int action,int mods){
+    (void)w;(void)scancode;(void)mods;
+    if(action==GLFW_RELEASE)return;
+    redraw_needed=1;
+    static int keys_logged=0;
+    if(keys_logged<5){keys_logged++;log_input("key press",0,0,0);}
+    if(app.screen==SCREEN_MENU)return;
+    if(app.screen==SCREEN_SETTINGS){
+        if(key==GLFW_KEY_ESCAPE)app.screen=SCREEN_MENU;
+        return;
+    }
+    if(app.screen==SCREEN_LOGIN){
+        if(key==GLFW_KEY_TAB){
+            if(app.login_focus==LOGIN_HIT_USERNAME)app.login_focus=LOGIN_HIT_PASSWORD;
+            else app.login_focus=LOGIN_HIT_USERNAME;
+        }
+        else if(key==GLFW_KEY_ENTER || key==GLFW_KEY_KP_ENTER)submit_login(AUTH_MODE_LOGIN);
+        else if(key==GLFW_KEY_BACKSPACE && !app.login_busy){
+            if(app.login_focus==LOGIN_HIT_USERNAME)remove_char(app.username);
+            else remove_char(app.password);
+        }
+        return;
+    }
+    if(app.chat_focused){
+        if(key==GLFW_KEY_ENTER || key==GLFW_KEY_KP_ENTER){send_chat();app.chat_focused=0;}
+        else if(key==GLFW_KEY_ESCAPE)app.chat_focused=0;
+        else if(key==GLFW_KEY_BACKSPACE)remove_char(app.chat_input);
+    }else if(action==GLFW_PRESS && (key==GLFW_KEY_ENTER || key==GLFW_KEY_KP_ENTER)){
+        app.chat_focused=1;
+    }
+}
+static int game_finished(void){
+    return app.known_state && (app.state.int_phase==PHASE_WIN || app.state.int_phase==PHASE_LOSE);
+}
 static void mouse_button(GLFWwindow *w,int button,int action,int mods){
     (void)mods;
-    if(button!=GLFW_MOUSE_BUTTON_LEFT || !can_trace())return;
-    double x,y;glfwGetCursorPos(w,&x,&y);
-    if(action==GLFW_PRESS)trace_mouse_down(&app.trace,(float)x,(float)y);
+    if(button!=GLFW_MOUSE_BUTTON_LEFT)return;
+    redraw_needed=1;
+    double cursor_x,cursor_y;glfwGetCursorPos(w,&cursor_x,&cursor_y);
+    TracePoint p=window_to_canvas(cursor_x,cursor_y);
+    if(action==GLFW_PRESS){
+        int hit=0;
+        if(app.screen==SCREEN_MENU)hit=(int)art_menu_hit_test(p.x,p.y);
+        else if(app.screen==SCREEN_LOGIN)hit=(int)art_login_hit_test(p.x,p.y);
+        else if(app.screen==SCREEN_SETTINGS)hit=(int)art_settings_hit_test(p.x,p.y);
+        log_input("click",p.x,p.y,hit);
+    }
+    if(app.screen==SCREEN_MENU){
+        if(action!=GLFW_PRESS)return;
+        switch(art_menu_hit_test(p.x,p.y)){
+            case MENU_HIT_PLAY:press_play();break;
+            case MENU_HIT_SETTINGS:app.screen=SCREEN_SETTINGS;break;
+            case MENU_HIT_QUIT:glfwSetWindowShouldClose(w,GLFW_TRUE);break;
+            default:break;
+        }
+        return;
+    }
+    if(app.screen==SCREEN_SETTINGS){
+        if(action==GLFW_PRESS)settings_clicked(art_settings_hit_test(p.x,p.y));
+        return;
+    }
+    if(app.screen==SCREEN_LOGIN){
+        if(action!=GLFW_PRESS)return;
+        LoginHit hit=art_login_hit_test(p.x,p.y);
+        if(hit==LOGIN_HIT_USERNAME || hit==LOGIN_HIT_PASSWORD)app.login_focus=hit;
+        else if(hit==LOGIN_HIT_LOGIN)submit_login(AUTH_MODE_LOGIN);
+        else if(hit==LOGIN_HIT_SIGNUP)submit_login(AUTH_MODE_REGISTER);
+        else if(hit==LOGIN_HIT_GUEST)submit_login(AUTH_MODE_GUEST);
+        else if(hit==LOGIN_HIT_EYE)app.show_password=!app.show_password;
+        return;
+    }
+    if(action==GLFW_PRESS)app.chat_focused=art_chat_hit_test(p.x,p.y);
+    if(action==GLFW_PRESS && game_finished() && art_play_again_hit_test(p.x,p.y)){
+        send_action(ACTION_RESTART);
+        return;
+    }
+    if(!can_trace())return;
+    if(action==GLFW_PRESS)trace_mouse_down(&app.trace,p.x,p.y);
     if(action==GLFW_RELEASE && app.trace.status==TRACE_DRAWING){
-        trace_mouse_up(&app.trace,(float)x,(float)y);
+        trace_mouse_up(&app.trace,p.x,p.y);
         int success=app.trace.status==TRACE_SUCCESS;
         fprintf(stderr,"[trace] %s shape=%s direction=%d accuracy=%.1f%% completion=%.1f%% session=%d\n",
             success?"SUCCESS":"FAILED",trace_shape_name(app.trace.shape),
@@ -400,157 +816,223 @@ static void mouse_button(GLFWwindow *w,int button,int action,int mods){
 }
 static void cursor_move(GLFWwindow *w,double x,double y){
     (void)w;
-    if(can_trace() && app.trace.status==TRACE_DRAWING)
-        trace_mouse_move(&app.trace,(float)x,(float)y);
+    if(app.screen!=SCREEN_GAME){
+        TracePoint p=window_to_canvas(x,y);
+        /* Moving the mouse only needs a new frame if the highlight actually changed. */
+        if(app.screen==SCREEN_MENU){
+            MenuHit hit=art_menu_hit_test(p.x,p.y);
+            if(hit!=app.menu_hover)redraw_needed=1;
+            app.menu_hover=hit;
+        }else if(app.screen==SCREEN_SETTINGS){
+            SettingsHit hit=art_settings_hit_test(p.x,p.y);
+            if(hit!=app.settings_hover)redraw_needed=1;
+            app.settings_hover=hit;
+        }else{
+            LoginHit hit=art_login_hit_test(p.x,p.y);
+            if(hit!=app.login_hover)redraw_needed=1;
+            app.login_hover=hit;
+        }
+        return;
+    }
+    if(game_finished()){
+        TracePoint p=window_to_canvas(x,y);
+        app.play_again_hover=art_play_again_hit_test(p.x,p.y);
+    }
+    if(can_trace() && app.trace.status==TRACE_DRAWING){
+        TracePoint p=window_to_canvas(x,y);
+        trace_mouse_move(&app.trace,p.x,p.y);
+        redraw_needed=1;
+    }
 }
-static void draw_scene(void){
-    rect(0,0,WIDTH,HEIGHT,.15f,.12f,.22f,1);
-    rect(8,8,784,83,.25f,.18f,.28f,1);
-    draw_text(239,27,2.05f,"THE GINGERBREAD CURSE",.98f,.85f,.69f);
-    char banner[128];
-    snprintf(banner,sizeof(banner),"CO-OP POTIONS  |  RECIPE %d / %d  |  COMPLETED %d",
-             app.known_state?app.state.int_round+1:1,RECIPES_TO_WIN,
-             app.known_state?app.state.int_recipes_completed:0);
-    draw_text(239,62,1.22f,banner,.86f,.79f,.90f);
-    if(app.known_state && app.state.int_num_players>=2 &&
-       app.state.int_timer_limit_ms>0){
-        int secs=(app.state.int_timer_remaining_ms+999)/1000;
-        char timer_text[40];
-        snprintf(timer_text,sizeof(timer_text),"%02d s",secs);
-        const int low=app.state.int_timer_remaining_ms<=10000;
-        rect(676,18,103,58,low?.52f:.19f,low?.13f:.26f,low?.17f:.30f,1);
-        draw_text(688,24,1.2f,"TIME LEFT",.96f,.89f,.77f);
-        draw_text(698,43,2.12f,timer_text,low?1.0f:.73f,low?.44f:.96f,low?.44f:.68f);
-        rect(680,69,94,4,.33f,.32f,.36f,1);
-        float fraction=(float)app.state.int_timer_remaining_ms /
-                       (float)app.state.int_timer_limit_ms;
-        rect(680,69,94*fraction,4,low?.96f:.39f,low?.24f:.88f,low?.22f:.58f,1);
+/* Compare against the last drawn position, so walking animates from the same
+ * snapshots on every client without any extra network traffic. */
+static void update_walk_state(double now){
+    for(int i=0;i<MAX_PLAYERS;i++){
+        if(!app.visible[i])continue;
+        if(app.x[i]!=app.drawn_x[i] || app.y[i]!=app.drawn_y[i]){
+            if(app.x[i]>app.drawn_x[i])app.facing[i]=1;
+            else if(app.x[i]<app.drawn_x[i])app.facing[i]=-1;
+            app.drawn_x[i]=app.x[i];app.drawn_y[i]=app.y[i];
+            app.last_step_time[i]=now;
+        }
     }
-    rect(9,101,179,488,.96f,.86f,.70f,1);frame(9,101,179,488,.45f,.29f,.21f);
-    label(23,119,2.3f,"RECIPE");
-    label(20,160,1.05f,"Server-shuffled order:");
-    const float (*colors)[3]=ingredient_colors;
-    const int recipe[RECIPE_MAX_INGREDIENTS]={
-        app.known_state?app.state.int_recipe0:0,
-        app.known_state?app.state.int_recipe1:1,
-        app.known_state?app.state.int_recipe2:2,
-        app.known_state?app.state.int_recipe3:3
-    };
-    int recipe_len=app.known_state?app.state.int_recipe_length:0;
-    for(int i=0;i<recipe_len;i++){
-        int item=recipe[i];
-        float y=194+i*52;
-        render_draw_square(24,y,25,colors[item][0],colors[item][1],colors[item][2],1,1);
-        char step[4];snprintf(step,sizeof(step),"%d",i+1);
-        draw_text(33,y+6,1.45f,step,1,1,1);
-        label(55,y+8,1.12f,ingredient_names[item]);
-        if(app.known_state && i<app.state.int_stage)label(163,y+7,1.05f,"OK");
+}
+static void draw_players(double now){
+    /* Painter's order: whoever is lower on screen stands in front. */
+    int order[MAX_PLAYERS];
+    for(int i=0;i<MAX_PLAYERS;i++)order[i]=i;
+    if(MAX_PLAYERS==2 && app.y[0]>app.y[1]){order[0]=1;order[1]=0;}
+    for(int k=0;k<MAX_PLAYERS;k++){
+        int i=order[k];
+        if(!app.visible[i])continue;
+        /* Movement arrives at ~18 Hz, so "still walking" must outlast one gap. */
+        float walk=0.0f;
+        if(now-app.last_step_time[i]<0.14)walk=(float)(now*14.0);
+        int held=-1;
+        const char *name="";
+        if(app.known_state && i==0){held=app.state.int_held1;name=app.state.str_name1;}
+        else if(app.known_state){held=app.state.int_held2;name=app.state.str_name2;}
+        /* Until they first move, the players face each other. */
+        int facing=app.facing[i];
+        if(facing==0){
+            if(i==0)facing=1;
+            else facing=-1;
+        }
+        art_draw_player(i,app.x[i],app.y[i],facing,walk,held,i+1==app.id,name);
     }
-    if(app.known_state && app.state.int_num_players>=2 &&
-       app.state.int_phase!=PHASE_WIN && app.state.int_phase!=PHASE_LOSE){
-        char small_timer[60];
-        snprintf(small_timer,sizeof(small_timer),"Time left: %d s",
-                 (app.state.int_timer_remaining_ms+999)/1000);
-        if(app.state.int_timer_remaining_ms<=10000)
-            draw_text(20,399,1.12f,small_timer,.85f,.15f,.16f);
-        else label(20,399,1.12f,small_timer);
-    }
-    if(app.known_state){
-        char recipe_info[64];
-        snprintf(recipe_info,sizeof(recipe_info),"%d ingredients selected",recipe_len);
-        label(20,375,1.10f,recipe_info);
-    }
-    label(20,425,1.10f,"P1/P2 alternate pickup");
-    label(20,443,1.10f,"Partner traces rune");
-    label(22,473,1.17f,"CONTROLS");
-    label(22,496,1.04f,"WASD / Arrows: Move");
-    label(22,518,1.04f,"E: Interact  Q: Drop");
-    label(22,540,1.04f,"Mouse: Trace / Stir");
-    label(22,562,1.04f,"Trace either direction");
-    rect(199,104,588,482,.35f,.27f,.28f,1);
-    for(int y=138;y<580;y+=30){
-        glPushAttrib(GL_CURRENT_BIT|GL_ENABLE_BIT);glDisable(GL_TEXTURE_2D);
-        glColor3f(.42f,.33f,.34f);glBegin(GL_LINES);
-        glVertex2f(204,y);glVertex2f(785,y);glEnd();glPopAttrib();
-    }
-    frame(199,104,588,482,.11f,.08f,.12f);
-    if(!app.known_state)return;
-    for(int i=0;i<INGREDIENT_COUNT;i++){
-        int held=(app.state.int_held1==i || app.state.int_held2==i);
-        if(held || (app.state.int_used_mask&(1<<i)))continue;
-        render_draw_square(ingredient_x[i]-21,ingredient_y[i]-21,42,
-                           colors[i][0],colors[i][1],colors[i][2],1,1);
-        label(ingredient_x[i]-23,ingredient_y[i]+27,.92f,ingredient_short_names[i]);
-    }
-    render_draw_square(cauldron_x-34,cauldron_y-31,68,.15f,.17f,.17f,1,1);
-    render_draw_square(cauldron_x-23,cauldron_y-20,46,.31f,.73f,.37f,1,1);
-    label(cauldron_x-31,cauldron_y+43,1.17f,"CAULDRON");
-    for(int i=0;i<MAX_PLAYERS;i++)if(app.visible[i]){
-        float r=(i==0)?.82f:.40f,g=(i==0)?.40f:.48f,b=(i==0)?.44f:.85f;
-        render_draw_square(app.x[i],app.y[i],SQ_WIDTH,r,g,b,1,1);
-        char tag[24];snprintf(tag,sizeof(tag),"P%d",i+1);
-        draw_text(app.x[i]+12,app.y[i]+14,1.7f,tag,1,1,1);
-        int held=(i==0)?app.state.int_held1:app.state.int_held2;
-        if(held>=0)render_draw_square(app.x[i]+35,app.y[i]-12,18,
-                             colors[held][0],colors[held][1],colors[held][2],1,1);
-    }
-    char line[180];
+}
+/* The player's account name, or "Player N" before their name has arrived. */
+static const char *player_label(int id,char *fallback,size_t size){
+    const char *name="";
+    if(id==1)name=app.state.str_name1;
+    else if(id==2)name=app.state.str_name2;
+    if(name[0]!='\0')return name;
+    snprintf(fallback,size,"Player %d",id);
+    return fallback;
+}
+static void status_message(char *line,size_t size,const int *recipe){
     int stage=app.state.int_stage;
-    if(app.id==0)snprintf(line,sizeof(line),"Waiting for server / player assignment...");
-    else if(app.state.int_phase==PHASE_WIN)snprintf(line,sizeof(line),
-        "YOU WIN! All %d recipes completed together.",RECIPES_TO_WIN);
-    else if(app.state.int_phase==PHASE_LOSE)snprintf(line,sizeof(line),
-        "GAME OVER! Restart server to play again.");
-    else if(app.state.int_num_players<2)snprintf(line,sizeof(line),
-        "Player %d | Waiting for Player 2 to join...",app.id);
-    else if(app.state.int_phase==PHASE_COLLECT && stage<app.state.int_recipe_length)
-        snprintf(line,sizeof(line),"P%d collects %s -> cauldron  |  You are P%d",
-            ((app.state.int_round+stage)%2)+1,ingredient_names[recipe[stage]],app.id);
-    else if(app.state.int_phase==PHASE_TRACE)snprintf(line,sizeof(line),
-        "P%d: TRACE the rune  |  P%d: prepare to stir",app.state.int_actor,
-        3-app.state.int_actor);
-    else snprintf(line,sizeof(line),"P%d: STIR the potion to continue",app.state.int_actor);
-    rect(200,550,585,33,.94f,.85f,.71f,1);
-    label(213,558,1.18f,line);
+    char fallback[16];
+    if(app.id==0)snprintf(line,size,"Waiting for server / player assignment...");
+    else if(app.state.int_phase==PHASE_WIN)snprintf(line,size,
+        "You did it! All %d potions brewed together. Play again?",RECIPES_TO_WIN);
+    else if(app.state.int_phase==PHASE_LOSE)snprintf(line,size,
+        "Game over! Click Play Again to try again.");
+    else if(app.state.int_num_players<2)snprintf(line,size,
+        "You are Player %d. Waiting for your partner to log in...",app.id);
+    else if(app.state.int_phase==PHASE_COLLECT && stage<app.state.int_recipe_length){
+        int collector=((app.state.int_round+stage)%2)+1;
+        if(collector==app.id)snprintf(line,size,"Your turn: bring %s to the cauldron (E).",
+            ingredient_names[recipe[stage]]);
+        else snprintf(line,size,"%s is fetching %s. Get ready to trace!",
+            player_label(collector,fallback,sizeof(fallback)),ingredient_names[recipe[stage]]);
+    }
+    else if(app.state.int_actor==app.id && app.state.int_phase==PHASE_TRACE)
+        snprintf(line,size,"Your turn: trace the rune!");
+    else if(app.state.int_actor==app.id)snprintf(line,size,"Your turn: stir the potion!");
+    else if(app.state.int_phase==PHASE_TRACE)snprintf(line,size,
+        "%s is tracing the rune. You stir next.",
+        player_label(app.state.int_actor,fallback,sizeof(fallback)));
+    else snprintf(line,size,"%s is stirring the potion...",
+        player_label(app.state.int_actor,fallback,sizeof(fallback)));
+}
+static void draw_scene(double now){
+    /* With animations off, scenery time stands still. Typing carets keep blinking. */
+    double scenery_time=0.0;
+    if(app.animations_on)scenery_time=now;
+    if(app.screen==SCREEN_MENU){
+        art_draw_menu(app.menu_hover,app.menu_status,app.menu_status_is_error,(float)scenery_time);
+        return;
+    }
+    if(app.screen==SCREEN_SETTINGS){
+        art_draw_settings(app.window_size,app.animations_on,app.settings_hover);
+        return;
+    }
+    if(app.screen==SCREEN_LOGIN){
+        check_login_timeout();
+        LoginView view={.username=app.username,.password=app.password,.show_password=app.show_password,
+            .focus=app.login_focus,.hover=app.login_hover,.message=app.login_message,
+            .message_is_error=app.login_message_is_error,.busy=app.login_busy};
+        art_draw_login(&view,(float)now);
+        return;
+    }
+    art_draw_static(ART_LAYER_GAME);
+    art_draw_chat((const char (*)[CHAT_LINE_LENGTH])app.chat_lines,app.chat_line_players,
+                  app.chat_line_count,app.chat_input,app.chat_focused,(float)now);
+    /* Before the first snapshot there is no recipe yet: the preview just shows a star. */
+    int preview_rune=0;
+    if(app.known_state){
+        int item=current_recipe_ingredient();
+        if(item>=0)preview_rune=ingredient_rune[item];
+    }
+    art_draw_ambient((float)scenery_time,preview_rune);
+    if(!app.known_state){
+        art_draw_status("Waiting for the server...",-1.0f,0);
+        return;
+    }
+    const int recipe[RECIPE_MAX_INGREDIENTS]={app.state.int_recipe0,app.state.int_recipe1,
+                                        app.state.int_recipe2,app.state.int_recipe3};
+    art_draw_recipe(recipe,app.state.int_recipe_length,app.state.int_stage,
+                    app.state.int_round,app.state.int_mistakes);
+    for(int i=0;i<INGREDIENT_COUNT;i++){
+        if(app.state.int_used_mask&(1<<i))art_draw_empty_crate(i);
+        else if(app.state.int_held1!=i && app.state.int_held2!=i)
+            art_draw_ingredient(i,ingredient_x[i],ingredient_y[i]-5,1.0f);
+    }
+    update_walk_state(now);
+    draw_players(now);
+    char line[180];
+    status_message(line,sizeof(line),recipe);
+    int counting=app.state.int_num_players>=2 && app.state.int_timer_limit_ms>0;
+    float time_fraction=-1.0f;
+    if(counting)time_fraction=(float)app.state.int_timer_remaining_ms/(float)app.state.int_timer_limit_ms;
+    art_draw_status(line,time_fraction,(app.state.int_timer_remaining_ms+999)/1000);
+    if(app.state.int_phase==PHASE_WIN || app.state.int_phase==PHASE_LOSE)
+        art_draw_end_card(app.state.int_phase==PHASE_WIN,app.state.int_recipes_completed,
+                          app.play_again_hover,(float)scenery_time);
 }
 static void draw_trace(void){
-    if(!app.known_state || (app.state.int_phase!=PHASE_TRACE && app.state.int_phase!=PHASE_STIR))return;
+    if(app.screen!=SCREEN_GAME || !app.known_state || (app.state.int_phase!=PHASE_TRACE && app.state.int_phase!=PHASE_STIR))return;
     int mine=app.state.int_actor==app.id && app.id>0;
-    rect(212,143,561,398,.17f,.15f,.26f,.97f);
-    frame(212,143,561,398,.76f,.68f,.84f);
-    char hdr[120];
-    if(app.state.int_phase==PHASE_STIR)snprintf(hdr,sizeof(hdr),"STIR THE POTION - TRACE THE CIRCLE");
-    else snprintf(hdr,sizeof(hdr),"TRACE RUNE: %s  (mistakes %d/3)",
-                  trace_shape_name(app.trace.shape),app.state.int_mistakes);
-    draw_text(246,162,1.52f,hdr,.98f,.85f,.69f);
-    if(!mine){draw_text(290,205,1.5f,"WAITING FOR OTHER PLAYER",.93f,.85f,.92f);return;}
-    glPushAttrib(GL_CURRENT_BIT|GL_ENABLE_BIT|GL_POINT_BIT|GL_LINE_BIT);
-    glDisable(GL_TEXTURE_2D);glPointSize(3.5f);glColor3f(.80f,.77f,.86f);
-    glBegin(GL_POINTS);
-    for(int i=0;i<app.trace.target_count;i+=3)
-        glVertex2f(app.trace.target[i].x,app.trace.target[i].y);
-    glEnd();
-    if(app.trace.stroke_count>1){
-        glLineWidth(3.0f);
-        glColor3f(.33f,.77f,1.0f);
-        glBegin(GL_LINE_STRIP);
-        for(int i=0;i<app.trace.stroke_count;i++)
-            glVertex2f(app.trace.stroke[i].x,app.trace.stroke[i].y);
-        glEnd();
+    char title[120],subtitle[120];
+    if(app.state.int_phase==PHASE_STIR){
+        snprintf(title,sizeof(title),"Stir the potion");
+        snprintf(subtitle,sizeof(subtitle),"Trace the circle, either direction");
+    }else{
+        snprintf(title,sizeof(title),"Trace the %s rune",trace_shape_name(app.trace.shape));
+        snprintf(subtitle,sizeof(subtitle),"Mistakes %d/3 - start at the green dot",app.state.int_mistakes);
     }
+    art_draw_trace_panel(title,subtitle);
+    /* The rune dashes are shown to both players, so the partner can watch. */
+    float rune_alpha=0.35f;
+    if(mine)rune_alpha=0.9f;
+    for(int i=0;i+1<app.trace.target_count;i++){
+        if(i%6>=4)continue;
+        render_color_a(0xC9B7EEu,rune_alpha);
+        render_line(app.trace.target[i].x,app.trace.target[i].y,
+                    app.trace.target[i+1].x,app.trace.target[i+1].y,2.4f);
+    }
+    if(!mine){
+        render_color(0xFBEBCFu);
+        render_text_centered(492,340,22,"Waiting for your partner...");
+        return;
+    }
+    render_color(0x6FD6FFu);
+    for(int i=1;i<app.trace.stroke_count;i++)
+        render_line(app.trace.stroke[i-1].x,app.trace.stroke[i-1].y,
+                    app.trace.stroke[i].x,app.trace.stroke[i].y,3.4f);
     if(app.trace.target_count){
-        glPointSize(13.0f);glColor3f(.34f,.96f,.38f);glBegin(GL_POINTS);
-        glVertex2f(app.trace.target[0].x,app.trace.target[0].y);glEnd();
+        render_color(0x1B4D22u);
+        render_ellipse(app.trace.target[0].x,app.trace.target[0].y,9.0f,9.0f);
+        render_color(0x57F06Au);
+        render_ellipse(app.trace.target[0].x,app.trace.target[0].y,7.0f,7.0f);
     }
-    glPopAttrib();
     char status[135];
-    if(app.pending_result)snprintf(status,sizeof(status),"Checking result with server...");
-    else snprintf(status,sizeof(status),"%s | Accuracy %.0f%% | Completion %.0f%%",
+    if(app.pending_result)snprintf(status,sizeof(status),"Checking with the server...");
+    else snprintf(status,sizeof(status),"%s  -  accuracy %.0f%%  -  completed %.0f%%",
          trace_status_name(app.trace.status),100*trace_accuracy(&app.trace),100*trace_completion(&app.trace));
-    draw_text(240,500,1.30f,status,.91f,.88f,.96f);
-    draw_text(240,521,1.05f,"Start at green dot; follow dots either way; release.",.91f,.88f,.96f);
+    render_color(0xE5E0F2u);
+    render_text_centered(492,512,14.5f,status);
+}
+/* The longest a screen may go without a new frame. */
+static double render_interval(void){
+    switch(app.screen){
+        case SCREEN_GAME:
+            if(app.animations_on)return 1.0/15.0;
+            return 0.1;
+        case SCREEN_MENU:
+            if(app.animations_on)return 1.0/8.0;
+            return 1.0;
+        case SCREEN_LOGIN:return 0.5; /* Just the blinking caret. */
+        default:return 1.0;
+    }
 }
 static void handle_keys(GLFWwindow *w){
+    /* Letters typed into the login form or chat must not also move the player. */
+    if(app.screen!=SCREEN_GAME || app.chat_focused){
+        app.prev_e=app.prev_q=1;
+        return;
+    }
     int e=glfwGetKey(w,GLFW_KEY_E)==GLFW_PRESS;
     int q=glfwGetKey(w,GLFW_KEY_Q)==GLFW_PRESS;
     if(app.id>0 && app.known_state){
@@ -568,61 +1050,101 @@ static void handle_keys(GLFWwindow *w){
     else if(glfwGetKey(w,GLFW_KEY_D)==GLFW_PRESS || glfwGetKey(w,GLFW_KEY_RIGHT)==GLFW_PRESS)d='r';
     if(d!='n'){send_input(d);app.last_input_time=now;}
 }
-int main(void){
+/* slot 1 opens at the left of the screen and slot 2 at the right, so run.bat's two
+ * players don't open exactly on top of each other. */
+static void place_window(GLFWwindow *w,int slot,int area_x,int area_y,int area_w){
+    int win_w,win_h;
+    if(area_w<=0)return;
+    glfwGetWindowSize(w,&win_w,&win_h);
+    int x=area_x;
+    if(slot!=1)x=area_x+area_w-win_w;
+    if(x<area_x)x=area_x;
+    glfwSetWindowPos(w,x,area_y+30);
+}
+int main(int argc,char **argv){
     setvbuf(stdout,NULL,_IONBF,0);
     setvbuf(stderr,NULL,_IONBF,0);
     memset(&app,0,sizeof(app));
-    app.token=(int)((((uint32_t)getpid()<<15) ^ (uint32_t)time(NULL))&0x7fffffff);
-    if(app.token==0)app.token=1;
+    app.screen=SCREEN_LOGIN;
+    app.login_focus=LOGIN_HIT_USERNAME;
+    app.window_size=WINDOW_SIZE_NORMAL;
+    app.animations_on=1;
     app.shown_phase=-1;
     app.shown_round=-1;
     if(!glfwInit()){fprintf(stderr,"GLFW init failed\n");return 1;}
-    GLFWwindow *w=glfwCreateWindow(WIDTH,HEIGHT,"The Gingerbread Curse - DDS",NULL,NULL);
+    /* No multisampling: WSL often has no GPU here, and on the software driver it
+     * costs about five times the CPU per client. */
+    glfwWindowHint(GLFW_SAMPLES,0);
+    /* Open at full size, unless that would run off a small laptop screen. */
+    int area_x=0,area_y=0,area_w=0,area_h=0;
+    GLFWmonitor *monitor=glfwGetPrimaryMonitor();
+    if(monitor)glfwGetMonitorWorkarea(monitor,&area_x,&area_y,&area_w,&area_h);
+    float open_scale=1.0f;
+    if(area_h>0 && area_h-60<CANVAS_H)open_scale=(float)(area_h-60)/CANVAS_H;
+    GLFWwindow *w=glfwCreateWindow((int)(CANVAS_W*open_scale),(int)(CANVAS_H*open_scale),
+                                   "The Gingerbread Curse - DDS",NULL,NULL);
     if(!w){glfwTerminate();return 1;}
+    if(argc>1)place_window(w,atoi(argv[1]),area_x,area_y,area_w);
+    glfwFocusWindow(w);
+    glfwSetWindowFocusCallback(w,window_focus_changed);
+    glfwSetWindowRefreshCallback(w,window_needs_refresh);
     glfwMakeContextCurrent(w);glfwSwapInterval(0); /* avoid multi-window vsync stalls */
-    glfwSetWindowSizeLimits(w,WIDTH,HEIGHT,WIDTH,HEIGHT);
+    app.window=w;
+    glfwSetWindowAspectRatio(w,CANVAS_W,CANVAS_H);
     glfwSetMouseButtonCallback(w,mouse_button);
     glfwSetCursorPosCallback(w,cursor_move);
-    int fbw,fbh;glfwGetFramebufferSize(w,&fbw,&fbh);glViewport(0,0,fbw,fbh);
-    glMatrixMode(GL_PROJECTION);glLoadIdentity();glOrtho(0,WIDTH,HEIGHT,0,-1,1);
+    glfwSetCharCallback(w,character_typed);
+    glfwSetKeyCallback(w,key_event);
+    glfwSetFramebufferSizeCallback(w,framebuffer_resized);
+    int fbw,fbh;glfwGetFramebufferSize(w,&fbw,&fbh);framebuffer_resized(w,fbw,fbh);
+    glMatrixMode(GL_PROJECTION);glLoadIdentity();glOrtho(0,CANVAS_W,CANVAS_H,0,-1,1);
     glMatrixMode(GL_MODELVIEW);
+    render_init("assets/PatrickHand-Regular.ttf");
+    art_init();
     if(pthread_create(&net.thread,NULL,network_worker,NULL)!=0){
         perror("pthread_create network_worker");glfwDestroyWindow(w);glfwTerminate();return 1;
     }
     uint64_t last_main_log=monotonic_ms();
     unsigned long main_frames=0;
-    const struct timespec frame_pause={.tv_sec=0,.tv_nsec=16000000L};
+    double last_render=-1.0;
     while(!glfwWindowShouldClose(w)){
-        uint64_t frame_started=monotonic_ms();
-        glfwPollEvents();network_snapshot();
+        /* Sleeps until input arrives, or until the next network and key check is due. */
+        glfwWaitEventsTimeout(0.016);
+        network_snapshot();
         handle_keys(w);
-        glClearColor(.15f,.12f,.22f,1);glClear(GL_COLOR_BUFFER_BIT);
-        glLoadIdentity();draw_scene();draw_trace();
-        if(app.network_failed){
-            rect(12,558,775,38,.67f,.08f,.12f,1);
-            draw_text(18,570,1.28f,app.network_error,1,1,1);
+        double now=glfwGetTime();
+        double since_render=now-last_render;
+        if((redraw_needed && since_render>=MIN_RENDER_INTERVAL_S) || since_render>=render_interval()){
+            uint64_t frame_started=monotonic_ms();
+            redraw_needed=0;
+            last_render=now;
+            glClearColor(.09f,.08f,.18f,1);glClear(GL_COLOR_BUFFER_BIT);
+            glLoadIdentity();draw_scene(now);draw_trace();
+            if(app.network_failed){
+                render_color(0xAB141Fu);render_rect(199,590,588,33);
+                render_color(0xFFFFFFu);render_text(208,597,17,app.network_error);
+            }
+            glfwSwapBuffers(w);
+            main_frames++;
+            uint64_t frame_finished=monotonic_ms();
+            if(frame_finished-frame_started>200)
+                fprintf(stderr,"[client %d MAIN] SLOW FRAME %llu ms (draw+swap)\n",
+                    (int)getpid(),(unsigned long long)(frame_finished-frame_started));
         }
-        glfwSwapBuffers(w);
-        main_frames++;
-        uint64_t frame_finished=monotonic_ms();
-        if(frame_finished-frame_started>200)
-            fprintf(stderr,"[client %d MAIN] SLOW FRAME %llu ms (poll+draw+swap)\n",
-                (int)getpid(),(unsigned long long)(frame_finished-frame_started));
-        if(frame_finished-last_main_log>=2000){
+        uint64_t log_time=monotonic_ms();
+        if(log_time-last_main_log>=2000){
             printf("[client %d MAIN] alive: frames=%lu id=%d known=%d phase=%d rev=%d posRX=%lu stateRX=%lu\n",
                 (int)getpid(),main_frames,app.id,app.known_state,
                 app.known_state?app.state.int_phase:-1,
                 app.known_state?app.state.int_revision:-1,
                 (unsigned long)atomic_load(&client_pos_rx),
                 (unsigned long)atomic_load(&client_state_rx));
-            last_main_log=frame_finished;
+            last_main_log=log_time;
         }
-        /* With vsync disabled, cap the GLFW main loop near 60 FPS. */
-        nanosleep(&frame_pause,NULL);
     }
     /* Exit safely: network worker stops before GLFW/OpenGL teardown. */
     pthread_mutex_lock(&net.mutex);net.stop=1;pthread_mutex_unlock(&net.mutex);
     pthread_join(net.thread,NULL);
-    render_cleanup();glfwDestroyWindow(w);glfwTerminate();
+    art_cleanup();render_cleanup();glfwDestroyWindow(w);glfwTerminate();
     return 0;
 }

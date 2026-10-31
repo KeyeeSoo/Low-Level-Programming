@@ -108,8 +108,36 @@ static void test_wrong_ingredient(void){
     game_action(&g,1,111,ACTION_INTERACT,0);
     assert(g.phase==PHASE_LOSE);
 }
+static void test_restart(void){
+    GameRules g;game_init_seed(&g,8);
+    game_join(&g,111);game_join(&g,222);
+    /* A game in progress can't be restarted, and neither can a stranger restart one. */
+    int before=g.revision;
+    game_action(&g,1,111,ACTION_RESTART,0);
+    assert(g.revision==before && g.phase==PHASE_COLLECT);
+    int wrong=(g.recipe[0]+1)%INGREDIENT_COUNT;
+    place_at(&g.players[0],ingredient_x[wrong],ingredient_y[wrong]);
+    game_action(&g,1,111,ACTION_INTERACT,0);
+    place_at(&g.players[0],cauldron_x,cauldron_y);
+    game_action(&g,1,111,ACTION_INTERACT,0);
+    assert(g.phase==PHASE_LOSE);
+    game_action(&g,1,999,ACTION_RESTART,0);
+    assert(g.phase==PHASE_LOSE);
+    /* Either player can restart. Everything resets, but both keep their seats. */
+    int session=g.session;
+    game_action(&g,2,222,ACTION_RESTART,0);
+    assert(g.phase==PHASE_COLLECT && g.round==0 && g.stage==0 && g.mistakes==0);
+    assert(g.used_mask==0 && g.recipes_completed==0 && g.held[0]==-1 && g.held[1]==-1);
+    assert(g.session!=session && g.time_limit_ms==COLLECT_TIME_MS);
+    assert(g.num_players==2 && game_valid_player(&g,1,111) && game_valid_player(&g,2,222));
+    assert(g.players[0].x==355 && g.players[1].x==555);
+    /* A second click arriving late must not restart the new game too. */
+    int revision=g.revision;
+    game_action(&g,1,111,ACTION_RESTART,0);
+    assert(g.revision==revision);
+}
 int main(void){
-    test_missing_player();test_wrong_ingredient();test_all_rounds();
+    test_missing_player();test_wrong_ingredient();test_all_rounds();test_restart();
     puts("PASS: random recipes, 3 consecutive rounds, two-player roles, and safety checks");
     return 0;
 }

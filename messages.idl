@@ -1,10 +1,45 @@
 // Based on the original DDS messages.idl.
 // After editing, always regenerate messages.c and messages.h with: idlc -l c messages.idl
 
+// Login happens before joining. Both sides run with DDS Security encryption, so
+// the password is never readable on the network. The server only stores a hash.
+struct AuthRequest
+{
+    long int_nonce;  // Random per attempt: matches the response, makes retries safe
+    long int_mode;   // AUTH_MODE_LOGIN, AUTH_MODE_REGISTER or AUTH_MODE_GUEST
+    string<16> str_username;
+    string<32> str_password;
+};
+
+struct AuthResponse
+{
+    long int_nonce;
+    long int_result;         // AUTH_OK or the reason it failed
+    long int_session_token;  // Server-issued, proves identity from here on
+    string<16> str_username;
+};
+
+// A player's message to the server, which verifies the sender before relaying it.
+struct ChatSend
+{
+    long int_player_id;
+    long int_client_token;
+    string<80> str_text;
+};
+
+// The relayed message. The name comes from the server, so it can't be forged.
+struct ChatMessage
+{
+    long int_sequence;
+    long int_player_id;
+    string<16> str_username;
+    string<80> str_text;
+};
+
 struct JoinRequest
 {
     boolean b_dummy;
-    long int_client_token; // Identify a client so repeated join requests reuse the same ID
+    long int_client_token; // The session token issued at login
 };
 
 struct JoinResponse
@@ -60,4 +95,7 @@ struct GameState
     // Server-provided countdown, in milliseconds. 0 while waiting/finished.
     long int_timer_remaining_ms;
     long int_timer_limit_ms;
+    // Verified account names, empty until that player has joined.
+    string<16> str_name1;
+    string<16> str_name2;
 };

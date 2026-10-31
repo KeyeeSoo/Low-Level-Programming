@@ -10,11 +10,15 @@
  * main thread's state for publication by DDS. */
 #define SERVER_EVENT_CAP 4096
 #define SERVER_REPLY_CAP 128
+#define SERVER_AUTH_REPLY_CAP 32
+#define SERVER_CHAT_CAP 64
 
 typedef enum {
     SERVER_JOIN = 1,
     SERVER_MOVE = 2,
-    SERVER_ACTION = 3
+    SERVER_ACTION = 3,
+    SERVER_AUTHED = 4, /* From the auth thread: action holds the AuthResult. */
+    SERVER_CHAT = 5
 } ServerEventType;
 
 typedef struct {
@@ -24,6 +28,9 @@ typedef struct {
     int action;
     int session;
     char direction;
+    int nonce;
+    char name[USERNAME_MAX + 1];
+    char text[CHAT_MAX + 1];
 } ServerEvent;
 
 typedef struct {
@@ -32,11 +39,26 @@ typedef struct {
 } ServerJoinReply;
 
 typedef struct {
+    int nonce, result, token;
+    char name[USERNAME_MAX + 1];
+} ServerAuthReply;
+
+typedef struct {
+    int sequence, player_id;
+    char name[USERNAME_MAX + 1];
+    char text[CHAT_MAX + 1];
+} ServerChatReply;
+
+typedef struct {
     pthread_mutex_t mutex;
     ServerEvent events[SERVER_EVENT_CAP];
     unsigned event_read, event_write;
     ServerJoinReply replies[SERVER_REPLY_CAP];
     unsigned reply_read, reply_write;
+    ServerAuthReply auth_replies[SERVER_AUTH_REPLY_CAP];
+    unsigned auth_read, auth_write;
+    ServerChatReply chat_replies[SERVER_CHAT_CAP];
+    unsigned chat_read, chat_write;
     GameRules published_state;      /* A COPY, never authoritative state. */
     unsigned long dropped_events;
     int stop;
@@ -49,6 +71,10 @@ int server_bridge_push_event(ServerBridge *bridge, ServerEvent event);  /* DDS *
 int server_bridge_pop_event(ServerBridge *bridge, ServerEvent *out);   /* main */
 int server_bridge_push_reply(ServerBridge *bridge, ServerJoinReply reply); /* main */
 int server_bridge_pop_reply(ServerBridge *bridge, ServerJoinReply *out); /* DDS */
+int server_bridge_push_auth(ServerBridge *bridge, const ServerAuthReply *reply); /* main */
+int server_bridge_pop_auth(ServerBridge *bridge, ServerAuthReply *out); /* DDS */
+int server_bridge_push_chat(ServerBridge *bridge, const ServerChatReply *reply); /* main */
+int server_bridge_pop_chat(ServerBridge *bridge, ServerChatReply *out); /* DDS */
 void server_bridge_publish(ServerBridge *bridge, const GameRules *authoritative); /* main */
 void server_bridge_snapshot(ServerBridge *bridge, GameRules *out); /* DDS */
 void server_bridge_set_stop(ServerBridge *bridge, int failed);
