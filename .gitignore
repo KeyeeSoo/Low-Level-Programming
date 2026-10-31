@@ -19,8 +19,6 @@ CMakeUserPresets.json
 #cmake-build-*
 
 # Secrets and per-machine data: never commit these.
-.env
-*.env
 accounts.db
 security/generated/
 security/generated.tmp/
