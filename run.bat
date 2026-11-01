@@ -15,7 +15,7 @@ wsl --exec bash -c "command -v idlc && pkg-config --exists glfw3 CycloneDDS gl l
 if not errorlevel 1 goto dependencies_ready
 echo Installing dependencies, first run only. This takes a few minutes...
 rem Running as WSL's root user is what avoids the sudo password prompt.
-wsl -u root --exec bash -c "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y libgl1-mesa-dev libglfw3-dev cyclonedds-dev cyclonedds-tools pkg-config openssl libssl-dev libmongoc-dev"
+wsl -u root --exec bash -c "export DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a; apt-get update && apt-get install -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold libgl1-mesa-dev libglfw3-dev cyclonedds-dev cyclonedds-tools pkg-config openssl libssl-dev libmongoc-dev"
 if errorlevel 1 goto failed
 :dependencies_ready
 

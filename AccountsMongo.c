@@ -83,16 +83,19 @@ static void mongo_close(AccountStore *store)
 
 static int ensure_unique_index(mongoc_collection_t *users)
 {
-    bson_t *keys = BCON_NEW("username_key", BCON_INT32(1));
-    bson_t *options = BCON_NEW("unique", BCON_BOOL(true));
-    mongoc_index_model_t *model = mongoc_index_model_new(keys, options);
+    /* A raw createIndexes command: mongoc_index_model_t is missing from the
+     * older libmongoc that Ubuntu 22.04 installs. */
+    bson_t *command = BCON_NEW("createIndexes", BCON_UTF8(MONGO_COLLECTION),
+                               "indexes", "[", "{",
+                                   "key", "{", "username_key", BCON_INT32(1), "}",
+                                   "name", BCON_UTF8("username_key_1"),
+                                   "unique", BCON_BOOL(true),
+                               "}", "]");
     bson_error_t error;
-    int ok = mongoc_collection_create_indexes_with_opts(users, &model, 1, NULL, NULL, &error);
+    int ok = mongoc_collection_write_command_with_opts(users, command, NULL, NULL, &error);
     if (!ok)
         fprintf(stderr, "[accounts] MongoDB index failed: %s\n", error.message);
-    mongoc_index_model_destroy(model);
-    bson_destroy(options);
-    bson_destroy(keys);
+    bson_destroy(command);
     return ok;
 }
 
