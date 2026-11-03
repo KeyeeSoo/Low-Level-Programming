@@ -1,15 +1,59 @@
 [input] window gained focus
-DDS worker started with DDS Security (pid 325)
-[input] click at 446,588 screen=1 hit=5
-[client 325 MAIN] alive: frames=14 id=0 known=1 phase=0 rev=0 posRX=0 stateRX=1
-[client 325 DDS] alive: joinsSent=0 movesSent=0 posRX=0 stateRX=1
-[input] click at 469,431 screen=0 hit=1
-Joined as Player 1
-[client 325 MAIN] SLOW FRAME 318 ms (draw+swap)
-[client 325 DDS] alive: joinsSent=1 movesSent=0 posRX=3 stateRX=2
-[client 325 MAIN] alive: frames=33 id=1 known=1 phase=0 rev=1 posRX=3 stateRX=2
-[client 325 DDS] alive: joinsSent=1 movesSent=0 posRX=7 stateRX=4
-[client 325 MAIN] alive: frames=49 id=1 known=1 phase=0 rev=1 posRX=7 stateRX=4
-[client 325 DDS] alive: joinsSent=1 movesSent=0 posRX=11 stateRX=5
-[client 325 MAIN] alive: frames=66 id=1 known=1 phase=0 rev=1 posRX=11 stateRX=5
+DDS worker started with DDS Security (pid 339)
+[client 339 MAIN] alive: frames=5 id=0 known=0 phase=-1 rev=-1 posRX=0 stateRX=0
+[input] window lost focus
+[client 339 DDS] alive: joinsSent=0 movesSent=0 posRX=0 stateRX=0
+[client 339 MAIN] alive: frames=9 id=0 known=0 phase=-1 rev=-1 posRX=0 stateRX=0
+[client 339 DDS] alive: joinsSent=0 movesSent=0 posRX=0 stateRX=0
+[client 339 MAIN] alive: frames=13 id=0 known=0 phase=-1 rev=-1 posRX=3 stateRX=0
+[client 339 DDS] alive: joinsSent=0 movesSent=0 posRX=3 stateRX=0
+[input] window gained focus
+[client 339 MAIN] alive: frames=17 id=0 known=0 phase=-1 rev=-1 posRX=7 stateRX=0
+[client 339 DDS] alive: joinsSent=0 movesSent=0 posRX=7 stateRX=0
+[input] click at 448,491 screen=1 hit=4
+[client 339 MAIN] alive: frames=27 id=0 known=0 phase=-1 rev=-1 posRX=11 stateRX=0
+[client 339 DDS] alive: joinsSent=0 movesSent=0 posRX=11 stateRX=0
+[input] click at 392,619 screen=1 hit=5
+[input] click at 488,429 screen=0 hit=1
+Joined as Player 2
+[client 339 MAIN] SLOW FRAME 358 ms (draw+swap)
+[client 339 MAIN] alive: frames=43 id=2 known=1 phase=0 rev=2 posRX=16 stateRX=1
+[client 339 DDS] alive: joinsSent=1 movesSent=0 posRX=17 stateRX=1
+[client 339 MAIN] SLOW FRAME 397 ms (draw+swap)
+[client 339 MAIN] alive: frames=56 id=2 known=1 phase=0 rev=2 posRX=24 stateRX=3
+[client 339 DDS] alive: joinsSent=1 movesSent=0 posRX=25 stateRX=3
+[client 339 MAIN] SLOW FRAME 389 ms (draw+swap)
+[client 339 MAIN] SLOW FRAME 380 ms (draw+swap)
+[client 339 MAIN] SLOW FRAME 346 ms (draw+swap)
+[client 339 MAIN] alive: frames=65 id=2 known=1 phase=0 rev=2 posRX=33 stateRX=5
+[client 339 DDS] alive: joinsSent=1 movesSent=0 posRX=33 stateRX=5
+[client 339 MAIN] alive: frames=79 id=2 known=1 phase=0 rev=2 posRX=41 stateRX=7
+[client 339 DDS] alive: joinsSent=1 movesSent=0 posRX=41 stateRX=7
+[input] window lost focus
+[client 339 DDS] alive: joinsSent=1 movesSent=0 posRX=56 stateRX=9
+[client 339 MAIN] alive: frames=94 id=2 known=1 phase=0 rev=2 posRX=56 stateRX=9
+[client 339 DDS] alive: joinsSent=1 movesSent=0 posRX=69 stateRX=11
+[client 339 MAIN] alive: frames=109 id=2 known=1 phase=0 rev=2 posRX=71 stateRX=11
+[client 339 DDS] alive: joinsSent=1 movesSent=0 posRX=87 stateRX=13
+[client 339 MAIN] alive: frames=124 id=2 known=1 phase=0 rev=2 posRX=87 stateRX=13
+[client 339 DDS] alive: joinsSent=1 movesSent=0 posRX=97 stateRX=16
+[client 339 MAIN] alive: frames=139 id=2 known=1 phase=0 rev=3 posRX=98 stateRX=16
+[client 339 DDS] alive: joinsSent=1 movesSent=0 posRX=114 stateRX=18
+[client 339 MAIN] alive: frames=154 id=2 known=1 phase=0 rev=3 posRX=114 stateRX=18
+[client 339 DDS] alive: joinsSent=1 movesSent=0 posRX=122 stateRX=21
+[client 339 MAIN] alive: frames=169 id=2 known=1 phase=1 rev=4 posRX=123 stateRX=21
+[input] window gained focus
+[client 339 DDS] alive: joinsSent=1 movesSent=0 posRX=128 stateRX=23
+[client 339 MAIN] alive: frames=185 id=2 known=1 phase=5 rev=5 posRX=129 stateRX=23
+[client 339 DDS] alive: joinsSent=1 movesSent=0 posRX=131 stateRX=24
+[client 339 MAIN] alive: frames=202 id=0 known=0 phase=-1 rev=-1 posRX=131 stateRX=24
+[input] click at 428,418 screen=0 hit=1
+[client 339 DDS] alive: joinsSent=1 movesSent=0 posRX=131 stateRX=24
+[client 339 MAIN] alive: frames=215 id=0 known=0 phase=-1 rev=-1 posRX=131 stateRX=24
+[input] click at 396,599 screen=1 hit=5
+[client 339 DDS] alive: joinsSent=1 movesSent=0 posRX=131 stateRX=24
+[client 339 MAIN] alive: frames=230 id=0 known=0 phase=-1 rev=-1 posRX=131 stateRX=24
+[client 339 DDS] alive: joinsSent=1 movesSent=0 posRX=131 stateRX=24
+[client 339 MAIN] alive: frames=245 id=0 known=0 phase=-1 rev=-1 posRX=131 stateRX=24
+[input] click at 553,609 screen=0 hit=3
 DDS worker stopped

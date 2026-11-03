@@ -27,17 +27,21 @@
 #define PASSWORD_MIN 4
 #define PASSWORD_MAX 32
 #define CHAT_MAX 80
+#define PLAYER_TIMEOUT_MS 5000
+#define PLAYER_HEARTBEAT_MS 1000
 
 enum { AUTH_MODE_LOGIN=1, AUTH_MODE_REGISTER=2, AUTH_MODE_GUEST=3 };
 enum { AUTH_OK=0, AUTH_BAD_CREDENTIALS=1, AUTH_NAME_TAKEN=2, AUTH_INVALID_INPUT=3,
        AUTH_ALREADY_PLAYING=4, AUTH_GAME_FULL=5, AUTH_STORE_ERROR=6 };
 
-enum { PHASE_COLLECT=0, PHASE_TRACE=1, PHASE_STIR=2, PHASE_WIN=3, PHASE_LOSE=4 };
+enum { PHASE_COLLECT=0, PHASE_TRACE=1, PHASE_STIR=2, PHASE_WIN=3, PHASE_LOSE=4, PHASE_DISCONNECTED=5 };
 enum { ACTION_INTERACT=1, ACTION_DROP=2, ACTION_TRACE_OK=3,
-       ACTION_TRACE_BAD=4, ACTION_STIR_OK=5, ACTION_RESTART=6 };
+       ACTION_TRACE_BAD=4, ACTION_STIR_OK=5, ACTION_RESTART=6,
+       ACTION_LEAVE=7, ACTION_HEARTBEAT=8 };
 
 typedef struct {
     int b_active, x, y, token;
+    uint64_t last_seen_ms; /* Monotonic heartbeat time, server-owned. */
     char name[USERNAME_MAX+1]; /* Verified account name, set by the server. */
 } Player;
 typedef struct {
@@ -68,6 +72,9 @@ void game_init(GameRules *g);
 void game_init_seed(GameRules *g, uint32_t seed);
 /* Call once every server main-loop iteration, BEFORE handling queued actions. */
 void game_tick(GameRules *g, uint64_t now_ms);
+void game_touch(GameRules *g, int id, int token);
+int game_leave(GameRules *g, int token);
+void game_expire_players(GameRules *g);
 int game_join(GameRules *g, int token);
 int game_valid_player(const GameRules *g, int id, int token);
 void game_move(GameRules *g, int id, int token, char direction);

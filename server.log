@@ -1,26 +1,19 @@
 [server main] Game state loop running (authoritative owner)
-[server main] Recipe 1 (2 ingredients): Moonflower Black Feather
+[server main] Recipe 1 (4 ingredients): Witch Moss Thornvine Night Berry Toadstool
 [server DDS worker] DDS Security on: traffic is authenticated and encrypted
 [server DDS worker] running
-[accounts] MongoDB index failed: No suitable servers found (`serverSelectionTryOnce` set): [TLS handshake failed: error:0A000438:SSL routines::tlsv1 alert internal error calling hello on 'ac-3wmmzsm-shard-00-02.nwemq6k.mongodb.net:27017'] [TLS handshake failed: error:0A000438:SSL routines::tlsv1 alert internal error calling hello on 'ac-3wmmzsm-shard-00-01.nwemq6k.mongodb.net:27017'] [TLS handshake failed: error:0A000438:SSL routines::tlsv1 alert internal error calling hello on 'ac-3wmmzsm-shard-00-00.nwemq6k.mongodb.net:27017']
+[accounts] MongoDB index failed: No suitable servers found (`serverSelectionTryOnce` set): [TLS handshake failed: error:0A000438:SSL routines::tlsv1 alert internal error calling hello on 'ac-3wmmzsm-shard-00-00.nwemq6k.mongodb.net:27017'] [TLS handshake failed: error:0A000438:SSL routines::tlsv1 alert internal error calling hello on 'ac-3wmmzsm-shard-00-01.nwemq6k.mongodb.net:27017'] [TLS handshake failed: error:0A000438:SSL routines::tlsv1 alert internal error calling hello on 'ac-3wmmzsm-shard-00-02.nwemq6k.mongodb.net:27017']
 [auth] Could not reach MongoDB. Check your internet and the Atlas IP Access List. Using the local file instead.
 [auth] Accounts are stored in: local file
-[server MAIN] alive: ticks=123 players=0 round=1 stage=0 phase=0 rev=0 queued=0 dropped=0
+[server MAIN] alive: ticks=124 players=0 round=1 stage=0 phase=0 rev=0 queued=0 dropped=0
 [server DDS] alive: joins=0 inputs=0 actions=0 posTx=0 stateTx=2
-[auth] guest 'Guest_7370': result 0
-[server MAIN] alive: ticks=246 players=0 round=1 stage=0 phase=0 rev=0 queued=0 dropped=0
+[server MAIN] alive: ticks=248 players=0 round=1 stage=0 phase=0 rev=0 queued=0 dropped=0
 [server DDS] alive: joins=0 inputs=0 actions=0 posTx=0 stateTx=3
-[server MAIN] alive: ticks=370 players=0 round=1 stage=0 phase=0 rev=0 queued=0 dropped=0
+[server MAIN] alive: ticks=372 players=0 round=1 stage=0 phase=0 rev=0 queued=0 dropped=0
 [server DDS] alive: joins=0 inputs=0 actions=0 posTx=0 stateTx=5
-[auth] guest 'Guest_6148': result 0
-[server main] Guest_6148 -> player 1
-[server MAIN] alive: ticks=494 players=1 round=1 stage=0 phase=0 rev=1 queued=0 dropped=0
-[server DDS] alive: joins=1 inputs=0 actions=0 posTx=2 stateTx=6
-[server MAIN] alive: ticks=619 players=1 round=1 stage=0 phase=0 rev=1 queued=0 dropped=0
-[server DDS] alive: joins=1 inputs=0 actions=0 posTx=6 stateTx=7
-[server MAIN] alive: ticks=744 players=1 round=1 stage=0 phase=0 rev=1 queued=0 dropped=0
-[server DDS] alive: joins=1 inputs=0 actions=0 posTx=10 stateTx=9
-[server MAIN] alive: ticks=868 players=1 round=1 stage=0 phase=0 rev=1 queued=0 dropped=0
-[server DDS] alive: joins=1 inputs=0 actions=0 posTx=14 stateTx=10
-[server MAIN] alive: ticks=991 players=1 round=1 stage=0 phase=0 rev=1 queued=0 dropped=0
-[server DDS] alive: joins=1 inputs=0 actions=0 posTx=18 stateTx=11
+[server MAIN] alive: ticks=496 players=0 round=1 stage=0 phase=0 rev=0 queued=0 dropped=0
+[server DDS] alive: joins=0 inputs=0 actions=0 posTx=0 stateTx=6
+[server MAIN] alive: ticks=619 players=0 round=1 stage=0 phase=0 rev=0 queued=0 dropped=0
+[server DDS] alive: joins=0 inputs=0 actions=0 posTx=0 stateTx=7
+[server MAIN] alive: ticks=743 players=0 round=1 stage=0 phase=0 rev=0 queued=0 dropped=0
+[server DDS] alive: joins=0 inputs=0 actions=0 posTx=0 stateTx=9

@@ -17,11 +17,11 @@
 #pragma GCC diagnostic ignored "-Wunused-function"
 #pragma GCC diagnostic ignored "-Wmissing-braces"
 #define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
+#include "../stb_image.h"
 #define STB_TRUETYPE_IMPLEMENTATION
-#include "stb_truetype.h"
+#include "../stb_truetype.h"
 #define STB_EASY_FONT_IMPLEMENTATION
-#include "stb_easy_font.h"
+#include "../stb_easy_font.h"
 #pragma GCC diagnostic pop
 
 /* GL_CLAMP_TO_EDGE is available in modern compatibility GL implementations. */

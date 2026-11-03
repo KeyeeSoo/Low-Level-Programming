@@ -1,13 +1,12 @@
 #ifndef ART_H
 #define ART_H
 
-#include "GameRules.h"
+#include "../GameRules.h"
 
 /*
- * Procedural art for the attic and the HUD. There are no image files: every
- * sprite is drawn from vector primitives (Render.h). Anything that never changes
- * is compiled once into an OpenGL display list by art_init(), so each frame only
- * issues draw calls for what actually animates.
+ * Client-facing art API. Art.c coordinates objects from the Draw_* modules.
+ * Procedural sprites and menu/login images are cached using OpenGL display
+ * lists and static-layer textures.
  * Call these only from the main (OpenGL) thread.
  */
 
@@ -100,5 +99,12 @@ LoginHit art_login_hit_test(float x, float y);
 void art_draw_chat(const char (*lines)[CHAT_MAX + USERNAME_MAX + 4], const int *line_players,
                    int line_count, const char *input, int focused, float time_s);
 int art_chat_hit_test(float x, float y);
+
+/* Gameplay Exit control. Hit-test coordinates are logical canvas coordinates. */
+void art_draw_exit_button(int hovered);
+int art_exit_hit_test(float x, float y);
+
+void art_draw_disconnect_card(int leaving, int hovered);
+int art_disconnect_hit_test(float x, float y);
 
 #endif /* ART_H */

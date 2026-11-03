@@ -62,7 +62,8 @@ struct Position
     long int_y;
 };
 
-// E to pick up/add, Q to drop, and results of the local mouse tracing.
+// Gameplay actions, plus ACTION_LEAVE and ACTION_HEARTBEAT controls.
+// JoinResponse player_id=-1 acknowledges ACTION_LEAVE for that client token.
 struct GameAction
 {
     long int_player_id;

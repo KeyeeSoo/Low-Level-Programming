@@ -16,8 +16,8 @@
 #include <math.h>
 #include "messages.h"
 #include "GameRules.h"
-#include "Render.h"
-#include "Art.h"
+#include "render/Render.h"
+#include "render/Art.h"
 #include "Trace.h"
 #include "SecureDds.h"
 #include "DdsWake.h"
@@ -65,6 +65,7 @@ typedef struct {
     TraceSession trace;
     int shown_phase,shown_stage,shown_session,shown_mistakes,shown_round;
     int pending_result,prev_e,prev_q;
+    int exit_hover,disconnect_hover,returning_to_menu;
     double last_input_time;
     /* Purely visual walk state, derived from the server's position updates. */
     int drawn_x[MAX_PLAYERS],drawn_y[MAX_PLAYERS],facing[MAX_PLAYERS];
@@ -89,6 +90,7 @@ typedef struct {
     pthread_t thread;
     dds_entity_t wake; /* Protected by mutex, cleared before participant deletion. */
     int stop,failed;
+    int leave_requested;
     char error[256];
     int id,known_state;
     int visible[MAX_PLAYERS],x[MAX_PLAYERS],y[MAX_PLAYERS];
@@ -195,7 +197,7 @@ static void prepare_trace(void){
     app.pending_result=0;
 }
 static void receive_state(const GameState *s){
-    if(s->int_phase<PHASE_COLLECT || s->int_phase>PHASE_LOSE ||
+    if(s->int_phase<PHASE_COLLECT || s->int_phase>PHASE_DISCONNECTED ||
        s->int_recipe_length<RECIPE_MIN_INGREDIENTS ||
        s->int_recipe_length>RECIPE_MAX_INGREDIENTS ||
        s->int_stage<0 || s->int_stage>s->int_recipe_length ||
@@ -310,7 +312,7 @@ static void add_chat_message(const QueuedChat *message){
 /* Copy the latest DDS snapshot to the main/GLFW thread under the mutex.
  * prepare_trace() is only called from this main thread. */
 static void network_snapshot(void){
-    GameState state={0};int have_state,failed;
+    GameState state={0};int have_state,failed,leaving;
     int auth_done=0,auth_result=0,session_token=0,join_refused=0;
     char auth_name[USERNAME_MAX+1]="";
     QueuedChat incoming[CHAT_QUEUE_CAP];int incoming_count=0;
@@ -325,6 +327,7 @@ static void network_snapshot(void){
         incoming[incoming_count++]=net.chat_in[net.chat_in_read];
         net.chat_in_read=(net.chat_in_read+1)%CHAT_QUEUE_CAP;
     }
+    leaving=net.leave_requested;
     app.id=net.id;
     memcpy(app.visible,net.visible,sizeof(app.visible));
     memcpy(app.x,net.x,sizeof(app.x));
@@ -335,7 +338,22 @@ static void network_snapshot(void){
     if(failed)snprintf(app.network_error,sizeof(app.network_error),"%s",net.error);
     pthread_mutex_unlock(&net.mutex);
     app.network_failed=failed;
-    if(have_state)receive_state(&state);
+    if(have_state){
+        int changed=!app.known_state || app.state.int_revision!=state.int_revision ||
+            app.state.int_timer_remaining_ms!=state.int_timer_remaining_ms;
+        receive_state(&state);
+        if(changed)redraw_needed=1;
+        /* Empty verified names identify slots removed by the server. */
+        if(!state.str_name1[0])app.visible[0]=0;
+        if(!state.str_name2[0])app.visible[1]=0;
+    }
+    if(app.returning_to_menu && !leaving){
+        app.returning_to_menu=0;app.screen=SCREEN_MENU;
+        app.id=0;app.token=0;app.known_state=0;app.pending_result=0;
+        app.chat_focused=0;app.chat_line_count=0;
+        memset(app.visible,0,sizeof(app.visible));
+        set_menu_status("Session ended. Press Play to sign in again.",0);
+    }
     if(auth_done)finish_login(auth_result,session_token,auth_name);
     if(join_refused){
         app.screen=SCREEN_MENU;
@@ -402,7 +420,7 @@ static void *network_worker(void *unused){
     dds_delete_qos(stream_qos);stream_qos=NULL;
     dds_delete_qos(rel_qos);rel_qos=NULL;
     uint64_t last_network_log=monotonic_ms();
-    uint64_t last_join=0;
+    uint64_t last_join=0,last_heartbeat=0,last_leave=0,shutdown_started=0;
     uint64_t last_auth=0;
     int last_auth_nonce=0;
     int local_id=0,local_token=0;
@@ -415,11 +433,21 @@ static void *network_worker(void *unused){
     while(running){
         if(network_error(dds_waitset_set_trigger(wake,false),"reset waitset"))break;
 
-        int stop;
+        int stop,leaving;
         pthread_mutex_lock(&net.mutex);
-        stop=net.stop;
+        stop=net.stop;leaving=net.leave_requested || stop;
+        if(leaving)net.join_requested=0;
         pthread_mutex_unlock(&net.mutex);
-        if(stop)break;
+        uint64_t control_now=monotonic_ms();
+        if(stop && !shutdown_started)shutdown_started=control_now;
+        if(stop && (!local_token || control_now-shutdown_started>=2000))break;
+        if(leaving && local_token && (!last_leave || control_now-last_leave>=250)){
+            GameAction leave={0};
+            leave.int_player_id=local_id;leave.int_client_token=local_token;
+            leave.int_action=ACTION_LEAVE;
+            if(network_error(dds_write(aw,&leave),"write Leave"))break;
+            last_leave=control_now;
+        }
 
         dds_return_t n;
         dds_sample_info_t info[1];
@@ -484,7 +512,18 @@ static void *network_worker(void *unused){
             n=dds_take(rr,rs,info,1,1);
             if(network_error(n,"take JoinResponse")){running=0;break;}
             if(n==0)break;
-            if(info[0].valid_data && local_token && resp.int_client_token==local_token && !local_id){
+            if(info[0].valid_data && local_token && resp.int_client_token==local_token &&
+               resp.int_player_id==-1 && leaving){
+                local_id=0;local_token=0;last_join=0;last_leave=0;last_heartbeat=0;
+                pthread_mutex_lock(&net.mutex);
+                net.id=0;net.known_state=0;net.session_token=0;net.leave_requested=0;
+                net.join_requested=0;net.next_direction='n';
+                net.action_read=net.action_write;net.chat_out_read=net.chat_out_write;
+                memset(net.visible,0,sizeof(net.visible));
+                pthread_mutex_unlock(&net.mutex);
+                continue;
+            }
+            if(info[0].valid_data && local_token && resp.int_client_token==local_token && !local_id && !leaving){
                 if(resp.int_player_id>=1 && resp.int_player_id<=MAX_PLAYERS){
                     local_id=resp.int_player_id;
                     pthread_mutex_lock(&net.mutex);
@@ -507,7 +546,7 @@ static void *network_worker(void *unused){
             if(n==0)break;
             int index=pos.int_player_id-1;
             if(info[0].valid_data)atomic_fetch_add(&client_pos_rx,1);
-            if(info[0].valid_data && index>=0 && index<MAX_PLAYERS &&
+            if(local_id && info[0].valid_data && index>=0 && index<MAX_PLAYERS &&
                pos.int_x>=0 && pos.int_x<WIDTH && pos.int_y>=0 && pos.int_y<HEIGHT){
                 pthread_mutex_lock(&net.mutex);
                 net.visible[index]=1;net.x[index]=pos.int_x;net.y[index]=pos.int_y;
@@ -520,7 +559,7 @@ static void *network_worker(void *unused){
             n=dds_take(sr,ss,info,1,1);
             if(network_error(n,"take GameState")){running=0;break;}
             if(n==0)break;
-            if(info[0].valid_data){
+            if(local_id && info[0].valid_data){
                 atomic_fetch_add(&client_state_rx,1);
                 pthread_mutex_lock(&net.mutex);
                 net.state=state;net.known_state=1;
@@ -533,7 +572,7 @@ static void *network_worker(void *unused){
         pthread_mutex_lock(&net.mutex);
         int join_requested=net.join_requested;
         pthread_mutex_unlock(&net.mutex);
-        if(join_requested && local_token && !local_id && (!last_join || now-last_join>=DDS_MSECS(750))){
+        if(!leaving && join_requested && local_token && !local_id && (!last_join || now-last_join>=DDS_MSECS(750))){
             JoinRequest req={0};req.b_dummy=1;req.int_client_token=local_token;
             if(network_error(dds_write(jw,&req),"write JoinRequest"))break;
             atomic_fetch_add(&client_joins_tx,1);
@@ -554,7 +593,14 @@ static void *network_worker(void *unused){
             net.chat_out_read=(net.chat_out_read+1)%CHAT_QUEUE_CAP;
         }
         pthread_mutex_unlock(&net.mutex);
-        if(local_id){
+        if(local_id && !leaving){
+            uint64_t heartbeat_now=monotonic_ms();
+            if(!last_heartbeat || heartbeat_now-last_heartbeat>=PLAYER_HEARTBEAT_MS){
+                GameAction heartbeat={0};heartbeat.int_player_id=local_id;
+                heartbeat.int_client_token=local_token;heartbeat.int_action=ACTION_HEARTBEAT;
+                if(network_error(dds_write(aw,&heartbeat),"write Heartbeat"))break;
+                last_heartbeat=heartbeat_now;
+            }
             for(int i=0;i<n_chat;i++){
                 ChatSend message={0};
                 message.int_player_id=local_id;message.int_client_token=local_token;
@@ -585,6 +631,7 @@ static void *network_worker(void *unused){
                 (unsigned long)atomic_load(&client_state_rx));
             last_network_log=monotonic_ms();
         }
+        if(stop && !local_token)break;
         /* Retry clocks use a bounded timeout; gameplay work wakes immediately. */
         dds_attach_t triggered[6];
         if(network_error(dds_waitset_wait(wake,triggered,6,DDS_MSECS(50)),"wait network"))break;
@@ -598,7 +645,7 @@ dds_cleanup:
     return NULL;
 }
 static int can_trace(void){
-    return app.known_state && app.id>0 && app.state.int_actor==app.id &&
+    return !app.returning_to_menu && app.known_state && app.id>0 && app.state.int_actor==app.id &&
         (app.state.int_phase==PHASE_TRACE || app.state.int_phase==PHASE_STIR) &&
         !app.pending_result;
 }
@@ -666,11 +713,22 @@ static void check_login_timeout(void){
     set_login_message("Can't reach the server. Is it running?",1);
 }
 static void press_play(void){
+    if(!app.token){app.screen=SCREEN_LOGIN;redraw_needed=1;return;}
     pthread_mutex_lock(&net.mutex);
     net.join_requested=1;
     notify_network_locked();
     pthread_mutex_unlock(&net.mutex);
     app.screen=SCREEN_GAME;
+}
+/* Only request departure here; the DDS worker sends and waits for its ACK. */
+static void return_to_menu(void){
+    if(app.returning_to_menu)return;
+    app.returning_to_menu=1;app.chat_focused=0;app.pending_result=0;
+    pthread_mutex_lock(&net.mutex);
+    net.leave_requested=1;net.join_requested=0;net.next_direction='n';
+    notify_network_locked();
+    pthread_mutex_unlock(&net.mutex);
+    redraw_needed=1;
 }
 static void apply_window_size(int size){
     float scale=window_size_scales[size];
@@ -783,6 +841,15 @@ static void mouse_button(GLFWwindow *w,int button,int action,int mods){
     redraw_needed=1;
     double cursor_x,cursor_y;glfwGetCursorPos(w,&cursor_x,&cursor_y);
     TracePoint p=window_to_canvas(cursor_x,cursor_y);
+    if(app.screen==SCREEN_GAME && art_exit_hit_test(p.x,p.y)){
+        if(action==GLFW_PRESS)glfwSetWindowShouldClose(w,GLFW_TRUE);
+        return;
+    }
+    if(app.screen==SCREEN_GAME && app.known_state &&
+       (app.state.int_phase==PHASE_DISCONNECTED || app.returning_to_menu)){
+        if(action==GLFW_PRESS && art_disconnect_hit_test(p.x,p.y))return_to_menu();
+        return;
+    }
     if(action==GLFW_PRESS){
         int hit=0;
         if(app.screen==SCREEN_MENU)hit=(int)art_menu_hit_test(p.x,p.y);
@@ -856,6 +923,11 @@ static void cursor_move(GLFWwindow *w,double x,double y){
         }
         return;
     }
+    TracePoint hover_point=window_to_canvas(x,y);
+    int exit_hover=art_exit_hit_test(hover_point.x,hover_point.y);
+    int disconnect_hover=art_disconnect_hit_test(hover_point.x,hover_point.y);
+    if(exit_hover!=app.exit_hover || disconnect_hover!=app.disconnect_hover)redraw_needed=1;
+    app.exit_hover=exit_hover;app.disconnect_hover=disconnect_hover;
     if(game_finished()){
         TracePoint p=window_to_canvas(x,y);
         app.play_again_hover=art_play_again_hit_test(p.x,p.y);
@@ -1057,6 +1129,7 @@ static void handle_keys(GLFWwindow *w){
     }
     int e=glfwGetKey(w,GLFW_KEY_E)==GLFW_PRESS;
     int q=glfwGetKey(w,GLFW_KEY_Q)==GLFW_PRESS;
+    if(app.returning_to_menu || (app.known_state && app.state.int_phase==PHASE_DISCONNECTED))return;
     if(app.id>0 && app.known_state){
         if(e&&!app.prev_e)send_action(ACTION_INTERACT);
         if(q&&!app.prev_q)send_action(ACTION_DROP);
@@ -1132,6 +1205,7 @@ int main(int argc,char **argv){
     while(!glfwWindowShouldClose(w)){
         /* Sleeps until input arrives, or until the next network and key check is due. */
         glfwWaitEventsTimeout(0.016);
+        if(glfwWindowShouldClose(w))break;
         network_snapshot();
         handle_keys(w);
         double now=glfwGetTime();
@@ -1145,6 +1219,11 @@ int main(int argc,char **argv){
             if(app.network_failed){
                 render_color(0xAB141Fu);render_rect(199,590,588,33);
                 render_color(0xFFFFFFu);render_text(208,597,17,app.network_error);
+            }
+            if(app.screen==SCREEN_GAME){
+                if(app.known_state && (app.state.int_phase==PHASE_DISCONNECTED || app.returning_to_menu))
+                    art_draw_disconnect_card(app.returning_to_menu,app.disconnect_hover);
+                art_draw_exit_button(app.exit_hover);
             }
             glfwSwapBuffers(w);
             main_frames++;

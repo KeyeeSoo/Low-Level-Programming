@@ -73,7 +73,7 @@ void game_tick(GameRules *g,uint64_t now_ms){
     /* Prevent a clock going backwards from extending a timer. */
     if(now_ms<g->clock_ms)now_ms=g->clock_ms;
     g->clock_ms=now_ms;
-    if(!g->deadline_ms || !g->time_limit_ms)return;
+    if(g->phase==PHASE_DISCONNECTED || !g->deadline_ms || !g->time_limit_ms)return;
     if(now_ms<g->deadline_ms){
         uint64_t remaining=g->deadline_ms-now_ms;
         g->time_remaining_ms=(int)(remaining>(uint64_t)g->time_limit_ms ?
@@ -137,12 +137,12 @@ static void place_at_start(Player *p,int index){
     p->y=340;
 }
 int game_join(GameRules *g,int token){
-    if(token<=0)return 0;
+    if(token<=0 || g->phase==PHASE_DISCONNECTED)return 0;
     for(int i=0;i<MAX_PLAYERS;i++)
         if(g->players[i].b_active && g->players[i].token==token)return i+1;
     for(int i=0;i<MAX_PLAYERS;i++)if(!g->players[i].b_active){
         Player *p=&g->players[i];
-        p->b_active=1;p->token=token;
+        p->b_active=1;p->token=token;p->last_seen_ms=g->clock_ms;
         place_at_start(p,i);
         ++g->num_players;++g->revision;
         /* Countdown begins only after both players have joined. */
@@ -191,7 +191,7 @@ static void game_restart(GameRules *g){
     ++g->revision;
 }
 void game_action(GameRules *g,int id,int token,int action,int session){
-    if(!game_valid_player(g,id,token))return;
+    if(!game_valid_player(g,id,token) || g->phase==PHASE_DISCONNECTED)return;
     if(g->phase==PHASE_WIN || g->phase==PHASE_LOSE){
         /* Restarting is the only action a finished game accepts. */
         if(action==ACTION_RESTART)game_restart(g);
@@ -262,5 +262,43 @@ void game_action(GameRules *g,int id,int token,int action,int session){
         }
         if(g->phase==PHASE_WIN)begin_phase_timer(g);
         ++g->revision;
+    }
+}
+
+void game_touch(GameRules *g,int id,int token){
+    if(game_valid_player(g,id,token))g->players[id-1].last_seen_ms=g->clock_ms;
+}
+
+int game_leave(GameRules *g,int token){
+    int slot=-1;
+    for(int i=0;i<MAX_PLAYERS;i++)
+        if(g->players[i].b_active && g->players[i].token==token){slot=i;break;}
+    if(slot<0)return 0; /* Duplicate or stale leave: no gameplay changes. */
+    memset(&g->players[slot],0,sizeof(g->players[slot]));
+    g->held[slot]=-1;
+    --g->num_players;
+    ++g->session; /* Any in-flight trace/stir results are now stale. */
+    ++g->revision;
+    g->actor=0;
+    g->deadline_ms=0; /* Freeze remaining time rather than let it expire. */
+    if(g->num_players){
+        g->phase=PHASE_DISCONNECTED;
+    }else{
+        /* Never continue a half-completed cooperative round with replacements. */
+        uint64_t now=g->clock_ms;
+        int session=g->session,revision=g->revision;
+        uint32_t seed=g->rng_state;
+        game_init_seed(g,seed);
+        g->clock_ms=now;g->session=session;g->revision=revision;
+    }
+    return 1;
+}
+
+void game_expire_players(GameRules *g){
+    for(int i=0;i<MAX_PLAYERS;i++){
+        Player *player=&g->players[i];
+        if(player->b_active && g->clock_ms>=player->last_seen_ms &&
+           g->clock_ms-player->last_seen_ms>=PLAYER_TIMEOUT_MS)
+            game_leave(g,player->token);
     }
 }

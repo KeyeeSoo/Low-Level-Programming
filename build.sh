@@ -21,9 +21,13 @@ gcc $FLAGS $SECURE_FLAGS server.c ServerBridge.c AuthWorker.c Accounts.c Account
     SecureDds.c GameRules.c messages.c -o server \
     $(pkg-config --cflags --libs CycloneDDS libcrypto libmongoc-1.0) -lm
 # Client: main (GLFW/OpenGL) thread + DDS background thread
-gcc $FLAGS $SECURE_FLAGS client.c GameRules.c Render.c Art.c Trace.c SecureDds.c messages.c -o client \
-    $(pkg-config --cflags --libs glfw3 CycloneDDS) -lGL -lm
-# Standalone tests do not depend on DDS or GLFW
+# Client: main (GLFW/OpenGL) thread + DDS background thread
+gcc $FLAGS $SECURE_FLAGS client.c GameRules.c \
+    render/Render.c render/Art.c \
+    render/Draw_Background.c render/Draw_Ingredients.c \
+    render/Draw_Main.c render/Draw_UI.c \
+    Trace.c SecureDds.c messages.c -o client \
+    $(pkg-config --cflags --libs glfw3 CycloneDDS) -lGL -lm # Standalone tests do not depend on DDS or GLFW
 gcc $FLAGS test_game.c GameRules.c Trace.c -o test_game -lm
 gcc $FLAGS test_threads.c ServerBridge.c GameRules.c -o test_threads -lm
 gcc $FLAGS test_recipe_preview.c GameRules.c -o test_recipe_preview -lm
