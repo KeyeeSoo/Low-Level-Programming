@@ -17,6 +17,26 @@ int server_bridge_push_event(ServerBridge *b,ServerEvent e){
     pthread_mutex_unlock(&b->mutex);
     return ok;
 }
+/* Copy in FIFO order under one lock; caller processes after unlocking. */
+size_t server_bridge_pop_batch(ServerBridge *b,ServerEvent *out,size_t capacity){
+    size_t n=0;
+    pthread_mutex_lock(&b->mutex);
+    while(n<capacity && b->event_read!=b->event_write){
+        out[n++]=b->events[b->event_read];
+        b->event_read=(b->event_read+1)%SERVER_EVENT_CAP;
+    }
+    pthread_mutex_unlock(&b->mutex);
+    return n;
+}
+void server_bridge_set_waker(ServerBridge *b,void (*wake)(void *),void *context){
+    pthread_mutex_lock(&b->mutex);
+    b->wake_network=wake;b->wake_context=context;
+    pthread_mutex_unlock(&b->mutex);
+}
+static void notify_network(ServerBridge *b){
+    /* Called with mutex held: unregister cannot race a callback/delete. */
+    if(b->wake_network)b->wake_network(b->wake_context);
+}
 int server_bridge_pop_event(ServerBridge *b,ServerEvent *e){
     int ok=0;
     pthread_mutex_lock(&b->mutex);
@@ -31,7 +51,7 @@ int server_bridge_push_reply(ServerBridge *b,ServerJoinReply reply){
     pthread_mutex_lock(&b->mutex);
     unsigned next=(b->reply_write+1)%SERVER_REPLY_CAP;
     if(next!=b->reply_read){
-        b->replies[b->reply_write]=reply;b->reply_write=next;ok=1;
+        b->replies[b->reply_write]=reply;b->reply_write=next;ok=1;notify_network(b);
     }
     pthread_mutex_unlock(&b->mutex);
     return ok;
@@ -51,7 +71,7 @@ int server_bridge_push_##suffix(ServerBridge *b,const type *reply){ \
     int ok=0; \
     pthread_mutex_lock(&b->mutex); \
     unsigned next=(b->tail+1)%(cap); \
-    if(next!=b->head){b->items[b->tail]=*reply;b->tail=next;ok=1;} \
+    if(next!=b->head){b->items[b->tail]=*reply;b->tail=next;ok=1;notify_network(b);} \
     pthread_mutex_unlock(&b->mutex); \
     return ok; \
 } \
@@ -66,7 +86,15 @@ DEFINE_REPLY_QUEUE(auth,ServerAuthReply,auth_replies,auth_read,auth_write,SERVER
 DEFINE_REPLY_QUEUE(chat,ServerChatReply,chat_replies,chat_read,chat_write,SERVER_CHAT_CAP)
 void server_bridge_publish(ServerBridge *b,const GameRules *g){
     pthread_mutex_lock(&b->mutex);
+    int changed=b->published_state.revision!=g->revision ||
+        (b->published_state.time_remaining_ms+999)/1000!=(g->time_remaining_ms+999)/1000;
+    for(int i=0;i<MAX_PLAYERS;i++){
+        if(b->published_state.players[i].x!=g->players[i].x ||
+           b->published_state.players[i].y!=g->players[i].y ||
+           b->published_state.players[i].b_active!=g->players[i].b_active)changed=1;
+    }
     b->published_state=*g;
+    if(changed)notify_network(b);
     pthread_mutex_unlock(&b->mutex);
 }
 void server_bridge_snapshot(ServerBridge *b,GameRules *g){
@@ -76,7 +104,7 @@ void server_bridge_snapshot(ServerBridge *b,GameRules *g){
 }
 void server_bridge_set_stop(ServerBridge *b,int failed){
     pthread_mutex_lock(&b->mutex);
-    b->stop=1;if(failed)b->failed=1;
+    b->stop=1;if(failed)b->failed=1;notify_network(b);
     pthread_mutex_unlock(&b->mutex);
 }
 int server_bridge_should_stop(ServerBridge *b){

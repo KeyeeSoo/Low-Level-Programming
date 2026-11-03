@@ -35,8 +35,7 @@ static void shuffle_recipe(GameRules *g, const int *previous, int previous_len){
         int j=(int)(random_next(g)%(uint32_t)(i+1));
         int t=pool[i];pool[i]=pool[j];pool[j]=t;
     }
-    g->recipe_len=RECIPE_MIN_INGREDIENTS+
-        (int)(random_next(g)%(RECIPE_MAX_INGREDIENTS-RECIPE_MIN_INGREDIENTS+1));
+    g->recipe_len= RECIPE_MIN_INGREDIENTS + (int)(random_next(g)%(RECIPE_MAX_INGREDIENTS-RECIPE_MIN_INGREDIENTS+1));
     for(int i=0;i<RECIPE_MAX_INGREDIENTS;i++)
         g->recipe[i]=(i<g->recipe_len)?pool[i]:-1;
     /* Adjacent recipes must use different ingredient SETS, not merely

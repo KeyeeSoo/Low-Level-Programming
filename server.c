@@ -3,7 +3,8 @@
  * Server DDS WORKER: owns DDS entities, receives requests and publishes copies.
  * Mutex-protected request/response queues + state snapshot join the threads.
  * Server AUTH THREAD (AuthWorker.c): logins, which are slow by design.
- * No DDS call occurs while the bridge mutex is locked.
+ * DDS reads/writes occur outside the bridge mutex. Only the short waitset
+ * trigger notification runs under the lock to protect its lifetime.
  */
 #define _POSIX_C_SOURCE 200809L
 #include <dds/dds.h>
@@ -19,6 +20,7 @@
 #include "messages.h"
 #include "GameRules.h"
 #include "ServerBridge.h"
+#include "DdsWake.h"
 #include "AuthWorker.h"
 #include "SecureDds.h"
 
@@ -77,6 +79,7 @@ static void *dds_worker(void *arg){
     dds_entity_t p=secure_create_participant("server");
     if(!dds_ok(p,"create secure participant"))return NULL;
     printf("[server DDS worker] DDS Security on: traffic is authenticated and encrypted\n");
+    dds_entity_t wake=0;
     dds_entity_t jt,rt,it,pt,at,st,jr,ir,ar,rw,pw,sw;
     dds_entity_t aqt,art,cst,cmt,aqr,arw,csr,cmw;
     dds_qos_t *stream_qos=qos_best_effort(),*reliable_qos=qos_reliable();
@@ -107,6 +110,10 @@ static void *dds_worker(void *arg){
 
     dds_delete_qos(stream_qos);stream_qos=NULL;
     dds_delete_qos(reliable_qos);reliable_qos=NULL;
+    dds_entity_t readers[]={aqr,csr,jr,ir,ar};
+    wake=wake_create(p,readers,sizeof(readers)/sizeof(readers[0]));
+    if(!dds_ok(wake,"create network waitset"))goto cleanup;
+    server_bridge_set_waker(&bridge,wake_notify,&wake);
     uint64_t last_diagnostic=dds_monotonic_ms();
     uint64_t last_state_publish=0;
     uint64_t last_position_publish[MAX_PLAYERS]={0};
@@ -114,6 +121,8 @@ static void *dds_worker(void *arg){
     int last_revision=-1,last_timer_second=-1;
     printf("[server DDS worker] running\n");
     while(!server_bridge_should_stop(&bridge)){
+        /* Reset BEFORE inspecting queues, so a later producer wake is retained. */
+        if(!dds_ok(dds_waitset_set_trigger(wake,false),"reset waitset"))goto cleanup;
         dds_return_t n;
         dds_sample_info_t info[1];
         AuthRequest auth={0};void *auths[1]={&auth};
@@ -254,9 +263,25 @@ static void *dds_worker(void *arg){
                 (unsigned long)atomic_load(&server_state_tx));
             last_diagnostic=dds_monotonic_ms();
         }
-        dds_sleepfor(DDS_MSECS(10));
+        /* Wake for DDS input, bridge output, or the next periodic deadline. */
+        uint64_t wait_now=dds_monotonic_ms(),deadline=last_state_publish+1500;
+        for(int i=0;i<MAX_PLAYERS;i++)if(snapshot.players[i].b_active){
+            int changed=snapshot.players[i].x!=last_px[i] || snapshot.players[i].y!=last_py[i];
+            uint64_t due=last_position_publish[i]+(changed?100:500);
+            if(due<deadline)deadline=due;
+        }
+        uint64_t delay=deadline>wait_now?deadline-wait_now:0;
+        pthread_mutex_lock(&bridge.mutex);
+        int pending=bridge.reply_read!=bridge.reply_write ||
+            bridge.auth_read!=bridge.auth_write || bridge.chat_read!=bridge.chat_write || bridge.stop;
+        pthread_mutex_unlock(&bridge.mutex);
+        if(pending)delay=0; /* Bounded drains must not leave queued replies asleep. */
+        if(delay>100)delay=100; /* bounded signal/shutdown checking */
+        dds_attach_t triggered[6];
+        if(!dds_ok(dds_waitset_wait(wake,triggered,6,DDS_MSECS(delay)),"wait network"))goto cleanup;
     }
 cleanup:
+    server_bridge_set_waker(&bridge,NULL,NULL);
     if(stream_qos)dds_delete_qos(stream_qos);
     if(reliable_qos)dds_delete_qos(reliable_qos);
     dds_delete(p); /* all child entities deleted with their participant */
@@ -376,10 +401,10 @@ int main(void){
                    "round=%d stage=%d mistakes=%d\n",
                    old_phase,game.phase,game.round+1,game.stage+1,game.mistakes);
         }
-        ServerEvent event;
+        ServerEvent events[128];
         int previous_round=game.round;
-        for(int k=0;k<128 && server_bridge_pop_event(&bridge,&event);k++)
-            process_event(&game,&event);
+        size_t event_count=server_bridge_pop_batch(&bridge,events,128);
+        for(size_t k=0;k<event_count;k++)process_event(&game,&events[k]);
         if(game.round!=previous_round){
             printf("[server main] Recipe %d (%d ingredients):",game.round+1,game.recipe_len);
             for(int i=0;i<game.recipe_len;i++)printf(" %s",ingredient_names[game.recipe[i]]);

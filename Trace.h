@@ -77,4 +77,5 @@ float trace_completion(const TraceSession *session);
 const char *trace_shape_name(TraceShape shape);
 const char *trace_status_name(TraceStatus status);
 
+
 #endif

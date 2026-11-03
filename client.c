@@ -20,6 +20,7 @@
 #include "Art.h"
 #include "Trace.h"
 #include "SecureDds.h"
+#include "DdsWake.h"
 
 #define PI 3.14159265358979323846f
 
@@ -86,6 +87,7 @@ typedef struct {
 typedef struct {
     pthread_mutex_t mutex;
     pthread_t thread;
+    dds_entity_t wake; /* Protected by mutex, cleared before participant deletion. */
     int stop,failed;
     char error[256];
     int id,known_state;
@@ -130,10 +132,16 @@ static dds_qos_t *reliable_qos(void){
     return q;
 }
 
-/* Input is queued to the DDS worker; OpenGL callbacks never invoke DDS. */
+/* Only the thread-safe waitset notification crosses threads; readers/writers
+ * remain owned by the network worker. Caller holds net.mutex. */
+static void notify_network_locked(void){
+    if(net.wake>0)(void)dds_waitset_set_trigger(net.wake,true);
+}
+/* Callbacks queue input and signal the waitset; DDS reads/writes stay on worker. */
 static void send_input(char dir){
     pthread_mutex_lock(&net.mutex);
     net.next_direction=dir;
+    notify_network_locked();
     pthread_mutex_unlock(&net.mutex);
 }
 static void send_action(int action){
@@ -144,6 +152,7 @@ static void send_action(int action){
         net.actions[net.action_write]=(QueuedAction){action,app.state.int_session};
         net.action_write=next;
     }else fprintf(stderr,"GameAction queue full; dropped action %d\n",action);
+    notify_network_locked();
     pthread_mutex_unlock(&net.mutex);
 }
 /* The star is a five-stroke continuous pentagram, not a concave star outline. */
@@ -352,6 +361,7 @@ static void *network_worker(void *unused){
     (void)unused;
     dds_entity_t participant=secure_create_participant("client");
     if(network_error(participant,"secure participant (run.bat rebuilds its certificates)"))return NULL;
+    dds_entity_t wake=0;
     dds_entity_t jt,rt,it,pt,at,st;
     dds_entity_t jw,rr,iw,pr,aw,sr;
     dds_entity_t aqt,art,cst,cmt,aqw,arr,csw,cmr;
@@ -398,7 +408,13 @@ static void *network_worker(void *unused){
     int local_id=0,local_token=0;
     int running=1;
     printf("DDS worker started with DDS Security (pid %ld)\n",(long)getpid());
+    dds_entity_t readers[]={arr,cmr,rr,pr,sr};
+    wake=wake_create(participant,readers,sizeof(readers)/sizeof(readers[0]));
+    if(network_error(wake,"create network waitset"))goto dds_cleanup;
+    pthread_mutex_lock(&net.mutex);net.wake=wake;pthread_mutex_unlock(&net.mutex);
     while(running){
+        if(network_error(dds_waitset_set_trigger(wake,false),"reset waitset"))break;
+
         int stop;
         pthread_mutex_lock(&net.mutex);
         stop=net.stop;
@@ -569,9 +585,12 @@ static void *network_worker(void *unused){
                 (unsigned long)atomic_load(&client_state_rx));
             last_network_log=monotonic_ms();
         }
-        dds_sleepfor(DDS_MSECS(5));
+        /* Retry clocks use a bounded timeout; gameplay work wakes immediately. */
+        dds_attach_t triggered[6];
+        if(network_error(dds_waitset_wait(wake,triggered,6,DDS_MSECS(50)),"wait network"))break;
     }
 dds_cleanup:
+    pthread_mutex_lock(&net.mutex);net.wake=0;pthread_mutex_unlock(&net.mutex);
     if(stream_qos)dds_delete_qos(stream_qos);
     if(rel_qos)dds_delete_qos(rel_qos);
     dds_delete(participant);
@@ -631,6 +650,7 @@ static void submit_login(int mode){
         snprintf(net.auth_username,sizeof(net.auth_username),"%s",app.username);
         snprintf(net.auth_password,sizeof(net.auth_password),"%s",app.password);
     }
+    notify_network_locked();
     pthread_mutex_unlock(&net.mutex);
     app.login_busy=1;
     app.login_started=glfwGetTime();
@@ -648,6 +668,7 @@ static void check_login_timeout(void){
 static void press_play(void){
     pthread_mutex_lock(&net.mutex);
     net.join_requested=1;
+    notify_network_locked();
     pthread_mutex_unlock(&net.mutex);
     app.screen=SCREEN_GAME;
 }
@@ -681,6 +702,7 @@ static void send_chat(void){
             memcpy(net.chat_out[net.chat_out_write],app.chat_input,sizeof(app.chat_input));
             net.chat_out_write=next;
         }
+        notify_network_locked();
         pthread_mutex_unlock(&net.mutex);
     }
     app.chat_input[0]='\0';
@@ -1143,7 +1165,7 @@ int main(int argc,char **argv){
         }
     }
     /* Exit safely: network worker stops before GLFW/OpenGL teardown. */
-    pthread_mutex_lock(&net.mutex);net.stop=1;pthread_mutex_unlock(&net.mutex);
+    pthread_mutex_lock(&net.mutex);net.stop=1;notify_network_locked();pthread_mutex_unlock(&net.mutex);
     pthread_join(net.thread,NULL);
     art_cleanup();render_cleanup();glfwDestroyWindow(w);glfwTerminate();
     return 0;

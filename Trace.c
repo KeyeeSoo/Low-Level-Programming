@@ -2,6 +2,7 @@
 
 #include <math.h>
 #include <stddef.h>
+#include <stdbool.h>
 
 #define TRACE_PI 3.14159265358979323846f
 #define TRACE_TARGET_SPACING 4.0f
@@ -14,10 +15,7 @@ static float distance_between(TracePoint a, TracePoint b)
 
 static TracePoint interpolate(TracePoint a, TracePoint b, float fraction)
 {
-    TracePoint result = {
-        a.x + (b.x - a.x) * fraction,
-        a.y + (b.y - a.y) * fraction
-    };
+    TracePoint result = { a.x + (b.x - a.x) * fraction,a.y + (b.y - a.y) * fraction };
     return result;
 }
 
@@ -87,38 +85,68 @@ int trace_set_path(TraceSession *session, const TracePoint *points,
     return 1;
 }
 
+/*
+Helper functions to calculate the points
+
+*/
+TracePoint calculate_pointStar(int i, float cx, float cy){
+    float angle = -TRACE_PI / 2.0f + (float) i * TRACE_PI / 5.0f;
+    float radius = (i % 2 == 0) ? 145.0f : 63.0f;
+    return (TracePoint){cx + radius * cosf(angle), cy + radius * sinf(angle)};
+}
+
+TracePoint calculate_point(int i, int count, float radius, bool isFlower, float cx, float cy){
+    float base_rad = 102.0f;
+    float rad_var = 34.0f;
+    float angle = -TRACE_PI / 2.0f + 2.0f * TRACE_PI * i / count;
+    radius = isFlower ? base_rad + rad_var * cosf(5.0f * (angle + TRACE_PI / 2.0f)) : radius;
+    return (TracePoint){cx +  radius * cosf(angle), cy + radius * sinf(angle)};
+}
+
 int trace_set_shape(TraceSession *session, TraceShape shape, float cx, float cy)
 {
     TracePoint points[512];
     int count = 0;
+   
 
     if (shape == TRACE_CIRCLE || shape == TRACE_FLOWER) {
         count = (shape == TRACE_CIRCLE) ? 240 : 400;
-        for (int i = 0; i < count; i++) {
-            float angle = -TRACE_PI / 2.0f + 2.0f * TRACE_PI * i / count;
-            float radius = 135.0f;
-            if (shape == TRACE_FLOWER) {
-                /* 5 radial lobes, with a petal centred at the top. */
-                radius = 102.0f + 34.0f * cosf(5.0f * (angle + TRACE_PI / 2.0f));
-            }
-            points[i] = (TracePoint){cx + radius * cosf(angle),
-                                     cy + radius * sinf(angle)};
+        bool isFlower = (shape == TRACE_FLOWER);
+        float radius = 135.0f;
+        int i = 0;
+        for (i = 0; i < count - 4; i+=4) {  
+            points[i] = calculate_point(i, count ,radius, isFlower,cx,cy);
+            points[i + 1] = calculate_point(i + 1, count ,radius, isFlower,cx,cy);
+            points[i + 2] = calculate_point(i + 2, count ,radius, isFlower,cx,cy);
+            points[i + 3] = calculate_point(i + 3, count ,radius, isFlower,cx,cy);
+            
         }
-    } else if (shape == TRACE_RECTANGLE) {
+        for (; i < count; ++i) {
+            points[i] = calculate_point(i, count, radius, isFlower, cx, cy);
+        }
+    } 
+    else if (shape == TRACE_RECTANGLE) {
         count = 4;
         points[0] = (TracePoint){cx - 165.0f, cy - 120.0f};
         points[1] = (TracePoint){cx + 165.0f, cy - 120.0f};
         points[2] = (TracePoint){cx + 165.0f, cy + 120.0f};
         points[3] = (TracePoint){cx - 165.0f, cy + 120.0f};
-    } else if (shape == TRACE_STAR) {
+    } 
+    else if (shape == TRACE_STAR) {
         count = 10;
-        for (int i = 0; i < count; i++) {
-            float angle = -TRACE_PI / 2.0f + (float)i * TRACE_PI / 5.0f;
-            float radius = (i % 2 == 0) ? 145.0f : 63.0f;
-            points[i] = (TracePoint){cx + radius * cosf(angle),
-                                     cy + radius * sinf(angle)};
+        int i = 0;
+        for (i = 0; i < count-5; i+=5) {
+            points[i] = calculate_pointStar(i,cx,cy);
+            points[i+1] = calculate_pointStar(i + 1,cx,cy);
+            points[i + 2] = calculate_pointStar(i + 2,cx,cy);
+            points[i + 3] = calculate_pointStar(i + 3,cx,cy);
+            points[i + 4] = calculate_pointStar(i + 4,cx,cy);
         }
-    } else {
+        for (; i < count; ++i) {
+            points[i] = calculate_pointStar(i, cx, cy);
+        }
+    } 
+    else {
         return 0;
     }
 
@@ -156,8 +184,7 @@ static void reverse_target(TraceSession *session)
     }
     session->cumulative_length[0] = 0.0f;
     for (int i = 1; i < n; ++i) {
-        session->cumulative_length[i] = session->cumulative_length[i - 1] +
-            distance_between(session->target[i - 1], session->target[i]);
+        session->cumulative_length[i] = session->cumulative_length[i - 1] + distance_between(session->target[i - 1], session->target[i]);
     }
     session->target_length = session->cumulative_length[n - 1];
 }
@@ -203,13 +230,9 @@ static void trace_sample(TraceSession *session, TracePoint p, float step)
 
         /* While direction is unknown, travelling along either initial leg
          * counts as accurate. Do not advance target progress yet. */
-        int sufficiently_far =
-            distance_between(p, session->target[0]) >= 18.0f &&
-            session->mouse_distance >= 18.0f;
-        int choose_forward = forward <= TRACE_TOLERANCE_PIXELS &&
-                             forward + 4.0f < backward;
-        int choose_reverse = backward <= TRACE_TOLERANCE_PIXELS &&
-                             backward + 4.0f < forward;
+        int sufficiently_far = distance_between(p, session->target[0]) >= 18.0f && session->mouse_distance >= 18.0f;
+        int choose_forward = forward <= TRACE_TOLERANCE_PIXELS && forward + 4.0f < backward;
+        int choose_reverse = backward <= TRACE_TOLERANCE_PIXELS && backward + 4.0f < forward;
         if (sufficiently_far && (choose_forward || choose_reverse)) {
             if (choose_reverse) reverse_target(session);
             session->direction = choose_reverse ? -1 : +1;
@@ -228,17 +251,16 @@ static void trace_sample(TraceSession *session, TracePoint p, float step)
     float furthest = session->progress_length + advance_budget;
     int begin = session->progress_index > 4 ? session->progress_index - 4 : 0;
     int end = begin;
-    while (end + 1 < session->target_count &&
-           session->cumulative_length[end + 1] <= furthest)
+    while (end + 1 < session->target_count && session->cumulative_length[end + 1] <= furthest)
         end++;
-    if (end < session->progress_index) end = session->progress_index;
+    if (end < session->progress_index) 
+        end = session->progress_index;
 
     float best_distance = 1.0e30f;
     int best_index = -1;
     for (int i = begin; i <= end; i++) {
         float d = distance_between(p, session->target[i]);
-        if (d < best_distance - 0.01f ||
-            (fabsf(d - best_distance) <= 0.01f && i > best_index)) {
+        if (d < best_distance - 0.01f || (fabsf(d - best_distance) <= 0.01f && i > best_index)) {
             best_distance = d;
             best_index = i;
         }

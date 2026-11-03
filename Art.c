@@ -324,6 +324,10 @@ void art_draw_ingredient(int item, float cx, float cy, float scale)
     glPopMatrix();
 }
 
+static void draw_exit_button(){
+    render_rect(0,0,100,100);
+}
+
 /* ---- Characters ---------------------------------------------------------- */
 static void draw_player_sprite(int player)
 {
@@ -1258,6 +1262,7 @@ static void build_static_lists(void)
     draw_chat_card_base();
     draw_fail_card();
     draw_footer();
+    draw_exit_button();
     glEndList();
     list_static[ART_LAYER_MENU] = glGenLists(1);
     glNewList(list_static[ART_LAYER_MENU], GL_COMPILE);

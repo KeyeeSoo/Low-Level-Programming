@@ -51,6 +51,9 @@ typedef struct {
 
 typedef struct {
     pthread_mutex_t mutex;
+    /* Notification only; callback must not call back into the bridge. */
+    void (*wake_network)(void *);
+    void *wake_context;
     ServerEvent events[SERVER_EVENT_CAP];
     unsigned event_read, event_write;
     ServerJoinReply replies[SERVER_REPLY_CAP];
@@ -68,6 +71,8 @@ typedef struct {
 int server_bridge_init(ServerBridge *bridge, const GameRules *initial);
 void server_bridge_destroy(ServerBridge *bridge);
 int server_bridge_push_event(ServerBridge *bridge, ServerEvent event);  /* DDS */
+size_t server_bridge_pop_batch(ServerBridge *bridge, ServerEvent *out, size_t capacity);
+void server_bridge_set_waker(ServerBridge *bridge, void (*wake)(void *), void *context);
 int server_bridge_pop_event(ServerBridge *bridge, ServerEvent *out);   /* main */
 int server_bridge_push_reply(ServerBridge *bridge, ServerJoinReply reply); /* main */
 int server_bridge_pop_reply(ServerBridge *bridge, ServerJoinReply *out); /* DDS */
