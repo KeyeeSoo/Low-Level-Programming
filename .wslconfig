@@ -1,1 +1,2 @@
-netowrkingMode=mirrored
+[wsl2]
+networkingMode=mirrored

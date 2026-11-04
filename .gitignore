@@ -24,3 +24,5 @@ security/generated/
 security/generated.tmp/
 test_accounts
 test_accounts.tmp
+.build_stamp
+certs.log

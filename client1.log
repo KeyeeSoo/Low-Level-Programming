@@ -1,50 +1,61 @@
 [input] window gained focus
-DDS worker started with DDS Security (pid 320)
+1793766837.810394 [0] dq.builtin: Remote secure participant 8c3ee779:6be0dc2:7e383ed0:1c1 not allowed
+DDS worker started with DDS Security (pid 847)
 [input] window lost focus
-[client 320 MAIN] alive: frames=5 id=0 known=0 phase=-1 rev=-1 posRX=0 stateRX=0
-[client 320 DDS] alive: joinsSent=0 movesSent=0 posRX=0 stateRX=0
+[client 847 MAIN] alive: frames=5 id=0 known=0 phase=-1 rev=-1 posRX=0 stateRX=0
+[client 847 DDS] alive: joinsSent=0 movesSent=0 posRX=0 stateRX=0
 [input] window gained focus
-[client 320 MAIN] alive: frames=10 id=0 known=0 phase=-1 rev=-1 posRX=0 stateRX=0
-[client 320 DDS] alive: joinsSent=0 movesSent=0 posRX=0 stateRX=0
-[input] click at 296,599 screen=1 hit=5
-[client 320 MAIN] alive: frames=26 id=0 known=0 phase=-1 rev=-1 posRX=0 stateRX=0
-[input] click at 527,412 screen=0 hit=1
-Joined as Player 1
-[client 320 DDS] alive: joinsSent=1 movesSent=0 posRX=1 stateRX=1
-[client 320 MAIN] SLOW FRAME 371 ms (draw+swap)
+[input] click at 64,259 screen=1 hit=0
+[input] key press at 0,0 screen=1 hit=0
 [input] window lost focus
-[client 320 MAIN] alive: frames=40 id=1 known=1 phase=0 rev=1 posRX=4 stateRX=2
-[client 320 DDS] alive: joinsSent=1 movesSent=0 posRX=5 stateRX=2
-[client 320 MAIN] alive: frames=55 id=1 known=1 phase=0 rev=1 posRX=8 stateRX=3
-[client 320 DDS] alive: joinsSent=1 movesSent=0 posRX=9 stateRX=3
-[client 320 MAIN] alive: frames=69 id=1 known=1 phase=0 rev=1 posRX=12 stateRX=4
-[client 320 DDS] alive: joinsSent=1 movesSent=0 posRX=13 stateRX=5
-[client 320 MAIN] alive: frames=83 id=1 known=1 phase=0 rev=2 posRX=19 stateRX=7
-[client 320 DDS] alive: joinsSent=1 movesSent=0 posRX=21 stateRX=7
-[client 320 MAIN] alive: frames=97 id=1 known=1 phase=0 rev=2 posRX=28 stateRX=9
-[client 320 DDS] alive: joinsSent=1 movesSent=0 posRX=29 stateRX=9
-[client 320 MAIN] alive: frames=110 id=1 known=1 phase=0 rev=2 posRX=36 stateRX=11
-[client 320 DDS] alive: joinsSent=1 movesSent=0 posRX=37 stateRX=11
+[client 847 MAIN] alive: frames=12 id=0 known=0 phase=-1 rev=-1 posRX=0 stateRX=0
+[client 847 DDS] alive: joinsSent=0 movesSent=0 posRX=0 stateRX=0
+[client 847 MAIN] alive: frames=16 id=0 known=0 phase=-1 rev=-1 posRX=0 stateRX=0
+[client 847 DDS] alive: joinsSent=0 movesSent=0 posRX=0 stateRX=0
+[client 847 MAIN] alive: frames=20 id=0 known=0 phase=-1 rev=-1 posRX=0 stateRX=0
+[client 847 DDS] alive: joinsSent=0 movesSent=0 posRX=0 stateRX=0
+[client 847 MAIN] alive: frames=24 id=0 known=0 phase=-1 rev=-1 posRX=0 stateRX=0
+[client 847 DDS] alive: joinsSent=0 movesSent=0 posRX=0 stateRX=0
+[client 847 MAIN] alive: frames=28 id=0 known=0 phase=-1 rev=-1 posRX=0 stateRX=0
+[client 847 DDS] alive: joinsSent=0 movesSent=0 posRX=0 stateRX=0
+[client 847 MAIN] alive: frames=32 id=0 known=0 phase=-1 rev=-1 posRX=0 stateRX=0
+[client 847 DDS] alive: joinsSent=0 movesSent=0 posRX=0 stateRX=0
+[client 847 MAIN] alive: frames=36 id=0 known=0 phase=-1 rev=-1 posRX=0 stateRX=0
+[client 847 DDS] alive: joinsSent=0 movesSent=0 posRX=0 stateRX=0
+[client 847 MAIN] alive: frames=40 id=0 known=0 phase=-1 rev=-1 posRX=0 stateRX=0
+[client 847 DDS] alive: joinsSent=0 movesSent=0 posRX=0 stateRX=0
+[client 847 MAIN] alive: frames=44 id=0 known=0 phase=-1 rev=-1 posRX=0 stateRX=0
+[client 847 DDS] alive: joinsSent=0 movesSent=0 posRX=0 stateRX=0
+[client 847 MAIN] alive: frames=48 id=0 known=0 phase=-1 rev=-1 posRX=0 stateRX=0
+[client 847 DDS] alive: joinsSent=0 movesSent=0 posRX=0 stateRX=0
+[client 847 MAIN] alive: frames=52 id=0 known=0 phase=-1 rev=-1 posRX=0 stateRX=0
+[client 847 DDS] alive: joinsSent=0 movesSent=0 posRX=0 stateRX=0
+[client 847 MAIN] alive: frames=56 id=0 known=0 phase=-1 rev=-1 posRX=0 stateRX=0
+[client 847 DDS] alive: joinsSent=0 movesSent=0 posRX=0 stateRX=0
+[client 847 MAIN] alive: frames=60 id=0 known=0 phase=-1 rev=-1 posRX=0 stateRX=0
+[client 847 DDS] alive: joinsSent=0 movesSent=0 posRX=0 stateRX=0
+[client 847 MAIN] alive: frames=64 id=0 known=0 phase=-1 rev=-1 posRX=0 stateRX=0
+[client 847 DDS] alive: joinsSent=0 movesSent=0 posRX=0 stateRX=0
+[client 847 MAIN] alive: frames=68 id=0 known=0 phase=-1 rev=-1 posRX=0 stateRX=0
+[client 847 DDS] alive: joinsSent=0 movesSent=0 posRX=0 stateRX=0
+[client 847 MAIN] alive: frames=72 id=0 known=0 phase=-1 rev=-1 posRX=0 stateRX=0
+[client 847 DDS] alive: joinsSent=0 movesSent=0 posRX=0 stateRX=0
+[client 847 MAIN] alive: frames=76 id=0 known=0 phase=-1 rev=-1 posRX=0 stateRX=0
+[client 847 DDS] alive: joinsSent=0 movesSent=0 posRX=0 stateRX=0
+[client 847 MAIN] alive: frames=80 id=0 known=0 phase=-1 rev=-1 posRX=0 stateRX=0
+[client 847 DDS] alive: joinsSent=0 movesSent=0 posRX=0 stateRX=0
+[client 847 MAIN] alive: frames=84 id=0 known=0 phase=-1 rev=-1 posRX=0 stateRX=0
+[client 847 DDS] alive: joinsSent=0 movesSent=0 posRX=0 stateRX=0
+[client 847 MAIN] alive: frames=88 id=0 known=0 phase=-1 rev=-1 posRX=0 stateRX=0
+[client 847 DDS] alive: joinsSent=0 movesSent=0 posRX=0 stateRX=0
+[client 847 MAIN] alive: frames=92 id=0 known=0 phase=-1 rev=-1 posRX=0 stateRX=0
+[client 847 DDS] alive: joinsSent=0 movesSent=0 posRX=0 stateRX=0
+[client 847 MAIN] alive: frames=96 id=0 known=0 phase=-1 rev=-1 posRX=0 stateRX=0
+[client 847 DDS] alive: joinsSent=0 movesSent=0 posRX=0 stateRX=0
+[client 847 MAIN] alive: frames=99 id=0 known=0 phase=-1 rev=-1 posRX=0 stateRX=0
+[client 847 DDS] alive: joinsSent=0 movesSent=0 posRX=0 stateRX=0
+[client 847 MAIN] alive: frames=103 id=0 known=0 phase=-1 rev=-1 posRX=0 stateRX=0
 [input] window gained focus
-[input] click at 611,317 screen=3 hit=0
-[client 320 MAIN] alive: frames=125 id=1 known=1 phase=0 rev=2 posRX=45 stateRX=13
-[input] key press at 0,0 screen=3 hit=0
-[client 320 DDS] alive: joinsSent=1 movesSent=1 posRX=46 stateRX=13
-[input] key press at 0,0 screen=3 hit=0
-[input] key press at 0,0 screen=3 hit=0
-[input] key press at 0,0 screen=3 hit=0
-[input] key press at 0,0 screen=3 hit=0
-[client 320 MAIN] alive: frames=141 id=1 known=1 phase=0 rev=2 posRX=62 stateRX=15
-[client 320 DDS] alive: joinsSent=1 movesSent=12 posRX=62 stateRX=15
-[client 320 MAIN] alive: frames=157 id=1 known=1 phase=0 rev=2 posRX=77 stateRX=17
-[client 320 DDS] alive: joinsSent=1 movesSent=23 posRX=78 stateRX=17
-[client 320 MAIN] alive: frames=173 id=1 known=1 phase=0 rev=3 posRX=91 stateRX=20
-[client 320 DDS] alive: joinsSent=1 movesSent=30 posRX=91 stateRX=20
-[client 320 MAIN] alive: frames=189 id=1 known=1 phase=0 rev=3 posRX=106 stateRX=22
-[client 320 DDS] alive: joinsSent=1 movesSent=41 posRX=107 stateRX=22
-[client 320 MAIN] alive: frames=204 id=1 known=1 phase=1 rev=4 posRX=117 stateRX=25
-[client 320 DDS] alive: joinsSent=1 movesSent=45 posRX=118 stateRX=25
-[client 320 MAIN] alive: frames=220 id=1 known=1 phase=1 rev=4 posRX=126 stateRX=27
-[client 320 DDS] alive: joinsSent=1 movesSent=45 posRX=126 stateRX=27
-1793716784.318538 [0]     recvMC: malformed packet received from vendor 1.16 state parse:data <52545053 02010110 80174e25 59946646 f7ea08cd 0c011400 00000000 02010110 @0x50 1505a800 00001000 00000000 03140000 00000000 23000000 00000004 00000018> (note: maybe partially bswap'd) {{15,5,168},0,16,0,1403,35}
+[input] click at 756,30 screen=1 hit=0
+[client 847 DDS] alive: joinsSent=0 movesSent=0 posRX=0 stateRX=0
 DDS worker stopped
