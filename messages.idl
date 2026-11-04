@@ -99,4 +99,7 @@ struct GameState
     // Verified account names, empty until that player has joined.
     string<16> str_name1;
     string<16> str_name2;
+    // While paused: the player ID whose seat is saved for them to rejoin,
+    // or 0 when the player who left was a guest (who can't rejoin).
+    long int_away_player;
 };

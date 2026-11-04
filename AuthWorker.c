@@ -50,7 +50,8 @@ static AccountStore *open_store(void)
 
 static void answer(const AuthJob *job, int result, int token, const char *name)
 {
-    ServerEvent event = {.type = SERVER_AUTHED, .nonce = job->nonce, .action = result, .token = token};
+    ServerEvent event = {.type = SERVER_AUTHED, .nonce = job->nonce, .action = result, .token = token,
+                         .guest = job->mode == AUTH_MODE_GUEST};
     snprintf(event.name, sizeof(event.name), "%s", name);
     if (!server_bridge_push_event(worker.bridge, event))
         fprintf(stderr, "[auth] event queue full; the client will retry\n");

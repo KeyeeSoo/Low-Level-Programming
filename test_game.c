@@ -136,8 +136,98 @@ static void test_restart(void){
     game_action(&g,1,111,ACTION_RESTART,0);
     assert(g.revision==revision);
 }
+/* Two account players, with player 1 holding an ingredient and time running. */
+static void start_account_game(GameRules *g){
+    game_init_seed(g,77);
+    game_tick(g,1000);
+    assert(game_join_named(g,111,"alice",0)==1);
+    assert(game_join_named(g,222,"bob",0)==2);
+    g->held[0]=g->recipe[0];
+    place_at(&g->players[0],300,300);
+    game_tick(g,6000); /* 5 s used: 30 s left of the collect timer. */
+    assert(g->time_remaining_ms==COLLECT_TIME_MS-5000);
+}
+static void test_account_rejoin(void){
+    GameRules g;start_account_game(&g);
+    int x=g.players[0].x,y=g.players[0].y,held=g.held[0],recipe0=g.recipe[0];
+    assert(game_leave(&g,111)==1);
+    /* Paused: the seat is saved with its position, ingredient and name. */
+    assert(g.phase==PHASE_DISCONNECTED && g.num_players==1 && game_away_player(&g)==1);
+    assert(!g.players[0].b_active && g.players[0].b_away && strcmp(g.players[0].name,"alice")==0);
+    assert(g.players[0].x==x && g.players[0].y==y && g.held[0]==held);
+    /* The timer stays frozen however long the wait is. */
+    game_tick(&g,60000);
+    assert(g.time_remaining_ms==COLLECT_TIME_MS-5000);
+    /* Nobody else can take the saved seat: not a stranger, not a guest with the name. */
+    assert(game_join_named(&g,333,"carol",0)==0);
+    assert(game_join_named(&g,334,"alice",1)==0);
+    assert(game_away_player(&g)==1);
+    /* Same account (any letter case, new login token) gets the seat back and play resumes. */
+    assert(game_join_named(&g,444,"ALICE",0)==1);
+    assert(g.phase==PHASE_COLLECT && g.num_players==2 && game_away_player(&g)==0);
+    assert(game_valid_player(&g,1,444) && !game_valid_player(&g,1,111));
+    assert(g.players[0].x==x && g.players[0].y==y && g.held[0]==held && g.recipe[0]==recipe0);
+    game_tick(&g,61000); /* 1 s after rejoining. */
+    assert(g.time_remaining_ms==COLLECT_TIME_MS-6000);
+}
+static void test_rejoin_resumes_trace(void){
+    GameRules g;start_account_game(&g);
+    g.phase=PHASE_TRACE;g.actor=2;
+    assert(game_leave(&g,222)==1 && g.actor==0);
+    assert(game_join_named(&g,555,"bob",0)==2);
+    /* The tracer gets their turn back. */
+    assert(g.phase==PHASE_TRACE && g.actor==2);
+}
+static void test_both_leave_resets(void){
+    GameRules g;start_account_game(&g);
+    int old_recipe[RECIPE_MAX_INGREDIENTS];memcpy(old_recipe,g.recipe,sizeof(old_recipe));
+    assert(game_leave(&g,111)==1 && game_away_player(&g)==1);
+    /* The remaining player gives up waiting: the game officially ends. */
+    assert(game_leave(&g,222)==1);
+    assert(g.num_players==0 && g.phase==PHASE_COLLECT && game_away_player(&g)==0);
+    assert(!g.players[0].b_away && g.players[0].name[0]=='\0' && g.held[0]==-1);
+    /* The saved seat is gone: alice now joins a fresh game like anyone else. */
+    assert(game_join_named(&g,666,"alice",0)==1 && g.num_players==1);
+}
+static void test_guest_cannot_rejoin(void){
+    GameRules g;
+    game_init_seed(&g,78);
+    assert(game_join_named(&g,111,"alice",0)==1);
+    assert(game_join_named(&g,222,"Guest_0042",1)==2);
+    g.held[1]=g.recipe[0];
+    assert(game_leave(&g,222)==1);
+    /* Paused with no saved seat: the guest's slot is cleared. */
+    assert(g.phase==PHASE_DISCONNECTED && game_away_player(&g)==0);
+    assert(!g.players[1].b_active && !g.players[1].b_away && g.players[1].name[0]=='\0');
+    assert(g.held[1]==-1);
+    assert(game_join_named(&g,333,"Guest_0042",1)==0);
+    assert(game_join(&g,334)==0);
+    /* Only when alice leaves too does the server start over. */
+    assert(game_leave(&g,111)==1 && g.num_players==0 && g.phase==PHASE_COLLECT);
+}
+static void test_timeout_saves_seat(void){
+    GameRules g;start_account_game(&g);
+    /* Bob keeps sending heartbeats; alice's connection drops. */
+    game_touch(&g,2,222);
+    g.players[1].last_seen_ms=g.clock_ms+PLAYER_TIMEOUT_MS;
+    game_tick(&g,g.clock_ms+PLAYER_TIMEOUT_MS);
+    game_expire_players(&g);
+    assert(g.phase==PHASE_DISCONNECTED && game_away_player(&g)==1 && g.num_players==1);
+    assert(game_join_named(&g,111,"alice",0)==1 && g.phase==PHASE_COLLECT);
+}
+static void test_leave_before_partner_joins(void){
+    GameRules g;
+    game_init_seed(&g,79);
+    assert(game_join_named(&g,111,"alice",0)==1);
+    /* Alone in the game: leaving just empties it, nothing is saved. */
+    assert(game_leave(&g,111)==1);
+    assert(g.num_players==0 && game_away_player(&g)==0 && g.phase==PHASE_COLLECT);
+}
 int main(void){
     test_missing_player();test_wrong_ingredient();test_all_rounds();test_restart();
+    test_account_rejoin();test_rejoin_resumes_trace();test_both_leave_resets();
+    test_guest_cannot_rejoin();test_timeout_saves_seat();test_leave_before_partner_joins();
     puts("PASS: random recipes, 3 consecutive rounds, two-player roles, and safety checks");
+    puts("PASS: account players rejoin a paused round; guests can't; game ends when both leave");
     return 0;
 }

@@ -29,6 +29,7 @@
 #define CHAT_MIN_INTERVAL_MS 250
 typedef struct {
     int token;
+    int guest;
     char name[USERNAME_MAX+1];
 } Session;
 static Session sessions[MAX_SESSIONS];
@@ -248,6 +249,7 @@ static void *dds_worker(void *arg){
             s.int_timer_limit_ms=snapshot.time_limit_ms;
             snprintf(s.str_name1,sizeof(s.str_name1),"%s",snapshot.players[0].name);
             snprintf(s.str_name2,sizeof(s.str_name2),"%s",snapshot.players[1].name);
+            s.int_away_player=game_away_player(&snapshot);
             if(!dds_ok(dds_write(sw,&s),"write GameState"))goto cleanup;
             atomic_fetch_add(&server_state_tx,1);
             last_state_publish=now;
@@ -312,6 +314,7 @@ static void process_login(GameRules *g,const ServerEvent *e){
             Session *slot=&sessions[next_session];
             next_session=(next_session+1)%MAX_SESSIONS;
             slot->token=reply.token;
+            slot->guest=e->guest;
             snprintf(slot->name,sizeof(slot->name),"%s",reply.name);
         }
     }
@@ -338,7 +341,8 @@ static void process_chat(const GameRules *g,const ServerEvent *e){
         fprintf(stderr,"[server main] chat queue full\n");
 }
 
-/* Retire session tokens on departure so late packets cannot affect a rejoin. */
+/* Retire a session token on logout, so it can never be used again. Leaving a
+ * game keeps the session: the player stays logged in at the menu. */
 static void retire_session(int token){
     for(int i=0;i<MAX_SESSIONS;i++)if(sessions[i].token==token)
         memset(&sessions[i],0,sizeof(sessions[i]));
@@ -358,21 +362,21 @@ static void process_event(GameRules *g,const ServerEvent *e){
         for(int i=0;session && i<MAX_PLAYERS;i++)
             if(g->players[i].b_active && g->players[i].token!=e->token &&
                strcasecmp(g->players[i].name,session->name)==0)taken=1;
-        int id=0;
-        if(session && !taken)id=game_join(g,e->token);
-        if(id)snprintf(g->players[id-1].name,sizeof(g->players[id-1].name),"%s",session->name);
+        int id=0,was_away=game_away_player(g);
+        if(session && !taken)id=game_join_named(g,e->token,session->name,session->guest);
         if(!server_bridge_push_reply(&bridge,(ServerJoinReply){
             .token=e->token,.player_id=id}))
             fprintf(stderr,"[server main] join reply queue full\n");
-        if(id)printf("[server main] %s -> player %d\n",session->name,id);
+        if(id && id==was_away)printf("[server main] %s rejoined as player %d\n",session->name,id);
+        else if(id)printf("[server main] %s -> player %d\n",session->name,id);
     }else if(e->type==SERVER_MOVE){
         game_touch(g,e->player_id,e->token);
         game_move(g,e->player_id,e->token,e->direction);
     }else if(e->type==SERVER_ACTION){
-        if(e->action==ACTION_LEAVE){
+        if(e->action==ACTION_LEAVE || e->action==ACTION_LOGOUT){
             /* Token also handles shutdown during a pending JoinResponse. */
             game_leave(g,e->token);
-            retire_session(e->token);
+            if(e->action==ACTION_LOGOUT)retire_session(e->token);
             if(!server_bridge_push_reply(&bridge,(ServerJoinReply){
                 .token=e->token,.player_id=-1}))
                 fprintf(stderr,"[server main] leave acknowledgement queue full\n");
@@ -427,12 +431,10 @@ int main(void){
         int previous_round=game.round;
         size_t event_count=server_bridge_pop_batch(&bridge,events,128);
         for(size_t k=0;k<event_count;k++)process_event(&game,&events[k]);
-        /* Check after queued heartbeats, so a freshly received heartbeat wins. */
-        int active_tokens[MAX_PLAYERS];
-        for(int i=0;i<MAX_PLAYERS;i++)active_tokens[i]=game.players[i].token;
+        /* Check after queued heartbeats, so a freshly received heartbeat wins.
+         * A timed-out player keeps their login, so after a network blip they can
+         * return to the menu and press Play to reclaim their seat. */
         game_expire_players(&game);
-        for(int i=0;i<MAX_PLAYERS;i++)
-            if(active_tokens[i] && !game.players[i].b_active)retire_session(active_tokens[i]);
         if(game.round!=previous_round){
             printf("[server main] Recipe %d (%d ingredients):",game.round+1,game.recipe_len);
             for(int i=0;i<game.recipe_len;i++)printf(" %s",ingredient_names[game.recipe[i]]);

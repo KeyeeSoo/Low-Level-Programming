@@ -104,7 +104,16 @@ int art_chat_hit_test(float x, float y);
 void art_draw_exit_button(int hovered);
 int art_exit_hit_test(float x, float y);
 
-void art_draw_disconnect_card(int leaving, int hovered);
+/* Card over a paused game. The client picks the wording: a saved seat waiting
+ * for its player, a guest who can't come back, or this player's own disconnect. */
+void art_draw_disconnect_card(const char *title, const char *line1, const char *line2,
+                              int leaving, int hovered);
 int art_disconnect_hit_test(float x, float y);
+
+/* Small badge at the top-left of the main menu: who is logged in, with a
+ * Log out button for accounts or a Log in button for guests. */
+void art_draw_account_badge(const char *name, int guest, int hovered);
+/* Tests the badge's button as it was last drawn. */
+int art_account_hit_test(float x, float y);
 
 #endif /* ART_H */

@@ -1,4 +1,6 @@
 #include "GameRules.h"
+#include <ctype.h>
+#include <stdio.h>
 #include <string.h>
 #include <time.h>
 
@@ -136,13 +138,49 @@ static void place_at_start(Player *p,int index){
     if(index==0)p->x=355;
     p->y=340;
 }
-int game_join(GameRules *g,int token){
-    if(token<=0 || g->phase==PHASE_DISCONNECTED)return 0;
+/* Account names are unique ignoring case, matching the server's login checks. */
+static int same_name(const char *a,const char *b){
+    if(!a || !b || !a[0])return 0;
+    while(*a && *b){
+        if(tolower((unsigned char)*a)!=tolower((unsigned char)*b))return 0;
+        a++;b++;
+    }
+    return *a==*b;
+}
+int game_away_player(const GameRules *g){
+    for(int i=0;i<MAX_PLAYERS;i++)if(g->players[i].b_away)return i+1;
+    return 0;
+}
+/* The away player is back: same seat, position and held ingredient, and the
+ * paused phase and countdown carry on from where they stopped. */
+static int rejoin_seat(GameRules *g,int index,int token){
+    Player *p=&g->players[index];
+    p->b_active=1;p->b_away=0;p->token=token;p->last_seen_ms=g->clock_ms;
+    ++g->num_players;
+    g->phase=g->paused_phase;
+    g->actor=g->paused_actor;
+    g->deadline_ms=0;
+    if(g->time_limit_ms && g->time_remaining_ms>0)
+        g->deadline_ms=g->clock_ms+(uint64_t)g->time_remaining_ms;
+    ++g->revision;
+    return index+1;
+}
+int game_join_named(GameRules *g,int token,const char *name,int guest){
+    if(token<=0)return 0;
     for(int i=0;i<MAX_PLAYERS;i++)
         if(g->players[i].b_active && g->players[i].token==token)return i+1;
+    if(g->phase==PHASE_DISCONNECTED){
+        /* A paused round only takes back the player it is waiting for. */
+        for(int i=0;i<MAX_PLAYERS;i++)
+            if(g->players[i].b_away && !guest && same_name(g->players[i].name,name))
+                return rejoin_seat(g,i,token);
+        return 0;
+    }
     for(int i=0;i<MAX_PLAYERS;i++)if(!g->players[i].b_active){
         Player *p=&g->players[i];
         p->b_active=1;p->token=token;p->last_seen_ms=g->clock_ms;
+        p->b_guest=guest?1:0;p->b_away=0;
+        snprintf(p->name,sizeof(p->name),"%s",name?name:"");
         place_at_start(p,i);
         ++g->num_players;++g->revision;
         /* Countdown begins only after both players have joined. */
@@ -150,6 +188,9 @@ int game_join(GameRules *g,int token){
         return i+1;
     }
     return 0;
+}
+int game_join(GameRules *g,int token){
+    return game_join_named(g,token,"",1);
 }
 int game_valid_player(const GameRules *g,int id,int token){
     return id>=1 && id<=MAX_PLAYERS && token>0 &&
@@ -274,14 +315,24 @@ int game_leave(GameRules *g,int token){
     for(int i=0;i<MAX_PLAYERS;i++)
         if(g->players[i].b_active && g->players[i].token==token){slot=i;break;}
     if(slot<0)return 0; /* Duplicate or stale leave: no gameplay changes. */
-    memset(&g->players[slot],0,sizeof(g->players[slot]));
-    g->held[slot]=-1;
+    Player *p=&g->players[slot];
     --g->num_players;
     ++g->session; /* Any in-flight trace/stir results are now stale. */
     ++g->revision;
+    if(g->phase!=PHASE_DISCONNECTED){
+        g->paused_phase=g->phase;
+        g->paused_actor=g->actor;
+    }
     g->actor=0;
     g->deadline_ms=0; /* Freeze remaining time rather than let it expire. */
-    if(g->num_players){
+    if(g->num_players && !p->b_guest && p->name[0]){
+        /* Keep the seat for this account so they can come back and carry on. */
+        p->b_active=0;p->b_away=1;p->token=0;
+        g->phase=PHASE_DISCONNECTED;
+    }else if(g->num_players){
+        /* A guest can't prove who they are later, so their seat is cleared. */
+        memset(p,0,sizeof(*p));
+        g->held[slot]=-1;
         g->phase=PHASE_DISCONNECTED;
     }else{
         /* Never continue a half-completed cooperative round with replacements. */

@@ -66,6 +66,12 @@ typedef struct {
     int shown_phase,shown_stage,shown_session,shown_mistakes,shown_round;
     int pending_result,prev_e,prev_q;
     int exit_hover,disconnect_hover,returning_to_menu;
+    /* Login state shown on the menu. You stay logged in until Log out or closing the app. */
+    int is_guest,login_is_guest,account_hover;
+    /* Set when leaving a game whose seat the server is saving for this player. */
+    int seat_saved;
+    /* Last known partner name, still needed after the server clears a guest's seat. */
+    char partner_name[USERNAME_MAX+1];
     double last_input_time;
     /* Purely visual walk state, derived from the server's position updates. */
     int drawn_x[MAX_PLAYERS],drawn_y[MAX_PLAYERS],facing[MAX_PLAYERS];
@@ -90,7 +96,9 @@ typedef struct {
     pthread_t thread;
     dds_entity_t wake; /* Protected by mutex, cleared before participant deletion. */
     int stop,failed;
-    int leave_requested;
+    /* leave_requested leaves the game. With logout_requested set too, the
+     * server also ends the login session. Closing the app always logs out. */
+    int leave_requested,logout_requested;
     char error[256];
     int id,known_state;
     int visible[MAX_PLAYERS],x[MAX_PLAYERS],y[MAX_PLAYERS];
@@ -210,7 +218,8 @@ static void receive_state(const GameState *s){
        s->int_used_mask<0 || s->int_used_mask>=(1<<INGREDIENT_COUNT) ||
        s->int_timer_limit_ms<0 || s->int_timer_limit_ms>3600000 ||
        s->int_timer_remaining_ms<0 ||
-       s->int_timer_remaining_ms>s->int_timer_limit_ms)return;
+       s->int_timer_remaining_ms>s->int_timer_limit_ms ||
+       s->int_away_player<0 || s->int_away_player>MAX_PLAYERS)return;
     const int recipe[RECIPE_MAX_INGREDIENTS]={s->int_recipe0,s->int_recipe1,
                                          s->int_recipe2,s->int_recipe3};
     int seen=0;
@@ -255,6 +264,7 @@ static void finish_login(int result,int session_token,const char *name){
     switch(result){
         case AUTH_OK:
             app.token=session_token;
+            app.is_guest=app.login_is_guest;
             snprintf(app.player_name,sizeof(app.player_name),"%s",name);
             app.screen=SCREEN_MENU;
             memset(app.password,0,sizeof(app.password));
@@ -346,18 +356,26 @@ static void network_snapshot(void){
         /* Empty verified names identify slots removed by the server. */
         if(!state.str_name1[0])app.visible[0]=0;
         if(!state.str_name2[0])app.visible[1]=0;
+        /* Remember the partner's name: a guest's is cleared as soon as they leave. */
+        if(app.id==1 && state.str_name2[0])
+            snprintf(app.partner_name,sizeof(app.partner_name),"%s",state.str_name2);
+        else if(app.id==2 && state.str_name1[0])
+            snprintf(app.partner_name,sizeof(app.partner_name),"%s",state.str_name1);
     }
+    /* Leaving a game keeps the login, so Play works again straight away. */
     if(app.returning_to_menu && !leaving){
         app.returning_to_menu=0;app.screen=SCREEN_MENU;
-        app.id=0;app.token=0;app.known_state=0;app.pending_result=0;
+        app.id=0;app.known_state=0;app.pending_result=0;
         app.chat_focused=0;app.chat_line_count=0;
         memset(app.visible,0,sizeof(app.visible));
-        set_menu_status("Session ended. Press Play to sign in again.",0);
+        if(app.seat_saved)set_menu_status("Your seat is saved. Press Play to rejoin!",0);
+        else show_logged_in_status();
+        app.seat_saved=0;
     }
     if(auth_done)finish_login(auth_result,session_token,auth_name);
     if(join_refused){
         app.screen=SCREEN_MENU;
-        set_menu_status("Can't join: the game is full, or you're already in it.",1);
+        set_menu_status("Can't join: the game is full or waiting for a player to rejoin.",1);
     }
     for(int i=0;i<incoming_count;i++)add_chat_message(&incoming[i]);
 }
@@ -420,7 +438,7 @@ static void *network_worker(void *unused){
     dds_delete_qos(stream_qos);stream_qos=NULL;
     dds_delete_qos(rel_qos);rel_qos=NULL;
     uint64_t last_network_log=monotonic_ms();
-    uint64_t last_join=0,last_heartbeat=0,last_leave=0,shutdown_started=0;
+    uint64_t last_join=0,last_heartbeat=0,last_leave=0,shutdown_started=0,leave_started=0;
     uint64_t last_auth=0;
     int last_auth_nonce=0;
     int local_id=0,local_token=0;
@@ -433,20 +451,35 @@ static void *network_worker(void *unused){
     while(running){
         if(network_error(dds_waitset_set_trigger(wake,false),"reset waitset"))break;
 
-        int stop,leaving;
+        int stop,leaving,logging_out;
         pthread_mutex_lock(&net.mutex);
         stop=net.stop;leaving=net.leave_requested || stop;
+        logging_out=net.logout_requested || stop;
         if(leaving)net.join_requested=0;
         pthread_mutex_unlock(&net.mutex);
         uint64_t control_now=monotonic_ms();
         if(stop && !shutdown_started)shutdown_started=control_now;
         if(stop && (!local_token || control_now-shutdown_started>=2000))break;
+        /* Not logged in: there is nothing to tell the server, so finish at once.
+         * A logout also gives up after 2 s, so a missing server can't block it. */
+        if(!stop && leaving && (!local_token ||
+           (logging_out && leave_started && control_now-leave_started>=2000))){
+            if(logging_out)local_token=0;
+            local_id=0;last_join=0;last_leave=0;last_heartbeat=0;leave_started=0;
+            pthread_mutex_lock(&net.mutex);
+            net.id=0;net.known_state=0;net.leave_requested=0;net.logout_requested=0;
+            if(logging_out)net.session_token=0;
+            memset(net.visible,0,sizeof(net.visible));
+            pthread_mutex_unlock(&net.mutex);
+            leaving=0;logging_out=0;
+        }
         if(leaving && local_token && (!last_leave || control_now-last_leave>=250)){
             GameAction leave={0};
             leave.int_player_id=local_id;leave.int_client_token=local_token;
-            leave.int_action=ACTION_LEAVE;
+            leave.int_action=logging_out?ACTION_LOGOUT:ACTION_LEAVE;
             if(network_error(dds_write(aw,&leave),"write Leave"))break;
             last_leave=control_now;
+            if(!leave_started)leave_started=control_now;
         }
 
         dds_return_t n;
@@ -514,9 +547,12 @@ static void *network_worker(void *unused){
             if(n==0)break;
             if(info[0].valid_data && local_token && resp.int_client_token==local_token &&
                resp.int_player_id==-1 && leaving){
-                local_id=0;local_token=0;last_join=0;last_leave=0;last_heartbeat=0;
+                /* Only a logout ends the login; leaving keeps the token for Play. */
+                if(logging_out)local_token=0;
+                local_id=0;last_join=0;last_leave=0;last_heartbeat=0;leave_started=0;
                 pthread_mutex_lock(&net.mutex);
-                net.id=0;net.known_state=0;net.session_token=0;net.leave_requested=0;
+                net.id=0;net.known_state=0;net.leave_requested=0;net.logout_requested=0;
+                if(logging_out)net.session_token=0;
                 net.join_requested=0;net.next_direction='n';
                 net.action_read=net.action_write;net.chat_out_read=net.chat_out_write;
                 memset(net.visible,0,sizeof(net.visible));
@@ -689,6 +725,12 @@ static void submit_login(int mode){
     nonce&=0x7fffffff;
     if(nonce==0)nonce=1;
     pthread_mutex_lock(&net.mutex);
+    /* The old session's logout must reach the server before a new login starts. */
+    if(net.logout_requested){
+        pthread_mutex_unlock(&net.mutex);
+        set_login_message("Still logging out. Try again in a moment.",1);
+        return;
+    }
     net.auth_nonce=nonce;net.auth_mode=mode;net.auth_pending=1;
     /* A guest has no credentials to send, even if something was typed in the form. */
     net.auth_username[0]='\0';
@@ -699,6 +741,7 @@ static void submit_login(int mode){
     }
     notify_network_locked();
     pthread_mutex_unlock(&net.mutex);
+    app.login_is_guest=mode==AUTH_MODE_GUEST;
     app.login_busy=1;
     app.login_started=glfwGetTime();
     set_login_message("Checking with the server...",0);
@@ -718,17 +761,36 @@ static void press_play(void){
     net.join_requested=1;
     notify_network_locked();
     pthread_mutex_unlock(&net.mutex);
+    app.partner_name[0]='\0';
     app.screen=SCREEN_GAME;
 }
 /* Only request departure here; the DDS worker sends and waits for its ACK. */
 static void return_to_menu(void){
     if(app.returning_to_menu)return;
     app.returning_to_menu=1;app.chat_focused=0;app.pending_result=0;
+    /* This player timed out and the server is holding their seat. */
+    app.seat_saved=app.known_state && app.id>0 && app.state.int_away_player==app.id;
     pthread_mutex_lock(&net.mutex);
     net.leave_requested=1;net.join_requested=0;net.next_direction='n';
     notify_network_locked();
     pthread_mutex_unlock(&net.mutex);
     redraw_needed=1;
+}
+/* Menu badge button: Log out for accounts, Log in for guests. Either way the
+ * server ends this session and the player goes to the login page. */
+static void log_out(void){
+    int was_guest=app.is_guest;
+    pthread_mutex_lock(&net.mutex);
+    net.leave_requested=1;net.logout_requested=1;net.join_requested=0;
+    notify_network_locked();
+    pthread_mutex_unlock(&net.mutex);
+    app.token=0;app.is_guest=0;app.player_name[0]='\0';
+    app.account_hover=0;app.menu_status[0]='\0';
+    memset(app.password,0,sizeof(app.password));
+    app.login_focus=LOGIN_HIT_USERNAME;
+    app.screen=SCREEN_LOGIN;
+    if(was_guest)set_login_message("",0);
+    else set_login_message("You have been logged out.",0);
 }
 static void apply_window_size(int size){
     float scale=window_size_scales[size];
@@ -859,6 +921,7 @@ static void mouse_button(GLFWwindow *w,int button,int action,int mods){
     }
     if(app.screen==SCREEN_MENU){
         if(action!=GLFW_PRESS)return;
+        if(app.token && art_account_hit_test(p.x,p.y)){log_out();return;}
         switch(art_menu_hit_test(p.x,p.y)){
             case MENU_HIT_PLAY:press_play();break;
             case MENU_HIT_SETTINGS:app.screen=SCREEN_SETTINGS;break;
@@ -910,8 +973,10 @@ static void cursor_move(GLFWwindow *w,double x,double y){
         /* Moving the mouse only needs a new frame if the highlight actually changed. */
         if(app.screen==SCREEN_MENU){
             MenuHit hit=art_menu_hit_test(p.x,p.y);
-            if(hit!=app.menu_hover)redraw_needed=1;
+            int account_hover=app.token && art_account_hit_test(p.x,p.y);
+            if(hit!=app.menu_hover || account_hover!=app.account_hover)redraw_needed=1;
             app.menu_hover=hit;
+            app.account_hover=account_hover;
         }else if(app.screen==SCREEN_SETTINGS){
             SettingsHit hit=art_settings_hit_test(p.x,p.y);
             if(hit!=app.settings_hover)redraw_needed=1;
@@ -1016,6 +1081,7 @@ static void draw_scene(double now){
     if(app.animations_on)scenery_time=now;
     if(app.screen==SCREEN_MENU){
         art_draw_menu(app.menu_hover,app.menu_status,app.menu_status_is_error,(float)scenery_time);
+        if(app.token)art_draw_account_badge(app.player_name,app.is_guest,app.account_hover);
         return;
     }
     if(app.screen==SCREEN_SETTINGS){
@@ -1107,6 +1173,34 @@ static void draw_trace(void){
          trace_status_name(app.trace.status),100*trace_accuracy(&app.trace),100*trace_completion(&app.trace));
     render_color(0xE5E0F2u);
     render_text_centered(492,512,14.5f,status);
+}
+/* Card over a paused game. GameState.int_away_player says whose seat is saved;
+ * 0 means the player who left was a guest, and guests can't rejoin. */
+static void draw_disconnect_card(void){
+    char line1[96],line2[96];
+    const char *title="Player disconnected";
+    const char *mine="";
+    if(app.id==1)mine=app.state.str_name1;
+    else if(app.id==2)mine=app.state.str_name2;
+    const char *partner="Your partner";
+    if(app.partner_name[0])partner=app.partner_name;
+    int away=app.state.int_away_player;
+    if(away && away==app.id){
+        title="You were disconnected";
+        snprintf(line1,sizeof(line1),"Your seat is saved while your partner waits.");
+        snprintf(line2,sizeof(line2),"Return to the menu, then press Play to rejoin.");
+    }else if(away){
+        snprintf(line1,sizeof(line1),"The game and timer are paused.");
+        snprintf(line2,sizeof(line2),"Waiting for %s to log back in and rejoin...",partner);
+    }else if(app.id && !mine[0]){
+        title="You were disconnected";
+        snprintf(line1,sizeof(line1),"Guests can't rejoin a game.");
+        snprintf(line2,sizeof(line2),"Return to the menu to start a new one.");
+    }else{
+        snprintf(line1,sizeof(line1),"%s was a guest and can't rejoin.",partner);
+        snprintf(line2,sizeof(line2),"Please return to the menu to start a new game.");
+    }
+    art_draw_disconnect_card(title,line1,line2,app.returning_to_menu,app.disconnect_hover);
 }
 /* The longest a screen may go without a new frame. */
 static double render_interval(void){
@@ -1222,7 +1316,7 @@ int main(int argc,char **argv){
             }
             if(app.screen==SCREEN_GAME){
                 if(app.known_state && (app.state.int_phase==PHASE_DISCONNECTED || app.returning_to_menu))
-                    art_draw_disconnect_card(app.returning_to_menu,app.disconnect_hover);
+                    draw_disconnect_card();
                 art_draw_exit_button(app.exit_hover);
             }
             glfwSwapBuffers(w);

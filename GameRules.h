@@ -37,17 +37,25 @@ enum { AUTH_OK=0, AUTH_BAD_CREDENTIALS=1, AUTH_NAME_TAKEN=2, AUTH_INVALID_INPUT=
 enum { PHASE_COLLECT=0, PHASE_TRACE=1, PHASE_STIR=2, PHASE_WIN=3, PHASE_LOSE=4, PHASE_DISCONNECTED=5 };
 enum { ACTION_INTERACT=1, ACTION_DROP=2, ACTION_TRACE_OK=3,
        ACTION_TRACE_BAD=4, ACTION_STIR_OK=5, ACTION_RESTART=6,
-       ACTION_LEAVE=7, ACTION_HEARTBEAT=8 };
+       ACTION_LEAVE=7, ACTION_HEARTBEAT=8, ACTION_LOGOUT=9 };
+/* ACTION_LEAVE leaves the game but stays logged in.
+ * ACTION_LOGOUT leaves the game and ends the login session too. */
 
 typedef struct {
     int b_active, x, y, token;
     uint64_t last_seen_ms; /* Monotonic heartbeat time, server-owned. */
     char name[USERNAME_MAX+1]; /* Verified account name, set by the server. */
+    int b_guest; /* Guests have no account, so they can never reclaim a seat. */
+    /* An account player who left while their partner stayed. The seat keeps
+     * their name, position and held ingredient until they rejoin or the game ends. */
+    int b_away;
 } Player;
 typedef struct {
     Player players[MAX_PLAYERS];
     int num_players, phase, stage, actor, mistakes, held[MAX_PLAYERS];
     int session, revision;
+    /* Phase and actor to resume with when an away player rejoins. */
+    int paused_phase, paused_actor;
     /* Only the server's main thread modifies these. */
     int recipe[RECIPE_MAX_INGREDIENTS];  /* recipe[stage] = ingredient ID, unused slots -1 */
     int recipe_len;                /* 2, 3, or 4 ingredients */
@@ -73,9 +81,18 @@ void game_init_seed(GameRules *g, uint32_t seed);
 /* Call once every server main-loop iteration, BEFORE handling queued actions. */
 void game_tick(GameRules *g, uint64_t now_ms);
 void game_touch(GameRules *g, int id, int token);
+/* Removes a player. An account player whose partner is still playing keeps
+ * their seat (b_away) and the round pauses; anyone else is removed outright.
+ * The game resets only once nobody is left. */
 int game_leave(GameRules *g, int token);
 void game_expire_players(GameRules *g);
+/* Joins as an unnamed guest (used by tests and tools). */
 int game_join(GameRules *g, int token);
+/* Joins with a verified name. While paused, only the away player with the
+ * same account name may join, and they resume the round where it stopped. */
+int game_join_named(GameRules *g, int token, const char *name, int guest);
+/* 1-based ID of the seat waiting for its player to rejoin, or 0. */
+int game_away_player(const GameRules *g);
 int game_valid_player(const GameRules *g, int id, int token);
 void game_move(GameRules *g, int id, int token, char direction);
 void game_action(GameRules *g, int id, int token, int action, int session);

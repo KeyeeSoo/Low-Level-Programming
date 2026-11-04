@@ -773,15 +773,60 @@ int art_disconnect_hit_test(float x,float y)
     return inside(x,y,294,370,212,40);
 }
 
-void art_draw_disconnect_card(int leaving,int hovered)
+/* Centred text, shrunk if needed so a long player name still fits the card. */
+static void card_text_fit(float cx, float y, float px, float max_width, const char *text)
+{
+    const float width = render_text_width(px, text);
+    if (width > max_width)
+        px *= max_width / width;
+    render_text_centered(cx, y, px, text);
+}
+
+void art_draw_disconnect_card(const char *title,const char *line1,const char *line2,
+                              int leaving,int hovered)
 {
     render_color_a(0x08060Fu,0.82f);
     render_rect(199,104,588,482);
     card(220,240,360,196,PARCHMENT);
     render_color(INK);
-    render_text_centered(400,256,27,"Player disconnected");
-    render_text_centered(400,301,17,"The game and timer are paused.");
-    render_text_centered(400,328,15,"Return to the menu to start a new session.");
+    card_text_fit(400,256,27,330,title);
+    card_text_fit(400,301,17,330,line1);
+    card_text_fit(400,328,15,330,line2);
     login_button(294,370,212,40,19,leaving?"Leaving...":"Return to Menu",
                  0x3F9B57u,0x4FB56Au,hovered,leaving);
+}
+
+/* Where the badge's button was last drawn; its width depends on the name. */
+static float account_button[4];
+
+void art_draw_account_badge(const char *name, int guest, int hovered)
+{
+    char label[48];
+    const char *action = "Log out";
+    if (guest) {
+        action = "Log in";
+        snprintf(label, sizeof(label), "Playing as %s", name);
+    } else {
+        snprintf(label, sizeof(label), "Signed in as %s", name);
+    }
+    const float x = 10, y = 10, h = 30, px = 15;
+    const float text_w = render_text_width(px, label);
+    const float button_w = render_text_width(px, action) + 22;
+    const float button_x = x + 12 + text_w + 10;
+    render_color_a(0x1E1B2Cu, 0.88f);
+    render_round_rect(x, y, button_x + button_w + 5 - x, h, 8);
+    render_color(0xFBEBCFu);
+    render_text(x + 12, y + (h - px) * 0.5f - 1, px, label);
+    login_button(button_x, y + 4, button_w, h - 8, px - 1, action,
+                 0x7E4FC0u, 0x9465D6u, hovered, 0);
+    account_button[0] = button_x;
+    account_button[1] = y + 4;
+    account_button[2] = button_w;
+    account_button[3] = h - 8;
+}
+
+int art_account_hit_test(float x, float y)
+{
+    return account_button[2] > 0 &&
+           inside(x, y, account_button[0], account_button[1], account_button[2], account_button[3]);
 }

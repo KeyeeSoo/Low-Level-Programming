@@ -75,11 +75,19 @@ The game can be tested on one laptop with two separate client windows; only the 
 
 The game opens on the login page: log in, sign up, or play as a guest (a temporary server-issued name that isn't saved). The main menu (Play, Settings, Quit) comes next. `assets/login.png` and `assets/main_menu.png` are AI-generated concept art, so declare them with your AI use; the menu image was edited to remove its Login sign. Accounts are stored in MongoDB when a `.env` file containing `MONGODB_URI` is present, and otherwise in a local `accounts.db` file. The game plays the same either way. `.env`, `accounts.db` and `security/generated/` are git-ignored and must not be committed or submitted. If MongoDB can't be reached, the server prints a warning and uses the local file.
 
+### Leaving, rejoining and logging out
+
+- **You stay logged in** until you press **Log out** (top-left of the main menu) or close the app. Guests see **Log in** there instead, which goes to the login page.
+- **An account player who leaves or loses connection** (5 s without a heartbeat) keeps their seat. The round and timer pause, and their partner sees "Waiting for *name* to log back in and rejoin...". When they log in with the same account and press **Play**, they get the same seat, position and held ingredient back, and the round carries on.
+- **A guest who leaves can't rejoin**, because a guest has no account to prove who they are. Their partner is told to return to the menu.
+- **The game officially ends when both players have left**, and the server starts a fresh game.
+- Server side: `game_leave` and `game_join_named` in `GameRules.c`; `GameState.int_away_player` tells clients whose seat is saved (0 means the leaver was a guest). `ACTION_LEAVE` leaves the game and keeps the login; `ACTION_LOGOUT` also ends the login session. Covered by the rejoin tests in `test_game.c`.
+
 In the game, press Enter to chat and Esc to stop. The server verifies the sender, limits the rate and relays the message.
 
 ## Limitations
 
 - This implements **mandatory two-player co-op**, not a competitive race. Competitive mode would require independent player recipe states and scoring, and is better added as a selectable mode in a separate change.
-- Joining does not currently include a disconnect/rejoin protocol. **Play Again** starts a new game with the same two players, but a player who closed their window can't log back in ("already in the game") until the server restarts.
+- Rejoining only works while the partner is still in the game, and only for account players. Guests, and saved seats, don't survive a server restart, and there are no separate rooms: the server runs one game at a time.
 - DDS Security keeps game data, logins and chat private, but by design the discovery announcement shows the machine name and the handshake shows the permissions file (topic names).
 - I verified C syntax using interface stubs and ran headless logic/tracing/thread tests; a complete live DDS+OpenGL playtest still needs to happen on your laptop.

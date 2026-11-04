@@ -29,6 +29,7 @@ typedef struct {
     int session;
     char direction;
     int nonce;
+    int guest; /* SERVER_AUTHED only: this login was a guest, not an account. */
     char name[USERNAME_MAX + 1];
     char text[CHAT_MAX + 1];
 } ServerEvent;
