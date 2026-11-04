@@ -2,7 +2,8 @@
 #include "Draw_Common.h"
 #include <GLFW/glfw3.h>
 #include <math.h>
-
+#include "Art.h"
+#include "Art_Style.h"
 
 
 static void petal_ring(int petals, float distance, float rx, float ry, unsigned fill)

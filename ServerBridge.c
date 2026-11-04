@@ -7,6 +7,7 @@ int server_bridge_init(ServerBridge *b,const GameRules *initial){
     b->published_state=*initial;
     return 1;
 }
+
 void server_bridge_destroy(ServerBridge *b){pthread_mutex_destroy(&b->mutex);}
 int server_bridge_push_event(ServerBridge *b,ServerEvent e){
     int ok=0;

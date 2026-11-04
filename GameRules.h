@@ -17,8 +17,8 @@
 #define RECIPES_TO_WIN 3
 
 /* Server-authoritative per-phase time limits; change these for difficulty. */
-#define COLLECT_TIME_MS 60000
-#define TRACE_TIME_MS   40000
+#define COLLECT_TIME_MS 35000
+#define TRACE_TIME_MS   25000
 #define STIR_TIME_MS    25000
 
 /* Login and chat limits, shared by client and server. They match messages.idl. */

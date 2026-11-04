@@ -32,8 +32,6 @@ rem Output goes to server.log, client1.log and client2.log.
 start "Gingerbread Server" /min wsl --cd "%~dp0." --exec bash -c "./server > server.log 2>&1"
 ping -n 3 127.0.0.1 >nul
 start "Gingerbread Player 1" /min wsl --cd "%~dp0." --exec bash -c "./client 1 > client1.log 2>&1"
-ping -n 3 127.0.0.1 >nul
-start "Gingerbread Player 2" /min wsl --cd "%~dp0." --exec bash -c "./client 2 > client2.log 2>&1"
 exit /b 0
 
 :no_wsl
