@@ -24,3 +24,15 @@ accounts.db
 security/generated.tmp/
 test_accounts
 test_accounts.tmp
+
+# Build outputs and logs: build.sh / run.bat recreate these on every machine.
+server
+client
+test_game
+test_threads
+test_timers
+test_recipe_preview
+test_trace_integration
+messages.c
+messages.h
+*.log
