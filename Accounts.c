@@ -16,7 +16,9 @@
 /* Slow on purpose: makes guessing passwords from a stolen store expensive,
  * runs on the server's auth thread so it can never stall the game loop */
 #define PBKDF2_ITERATIONS 200000
+// random salt per account, so two same passwords still hash differently
 #define SALT_BYTES 16
+// SHA-256 gives 32 bytes
 #define HASH_BYTES 32
 
 // turn raw bytes into a hex string so they can be saved as text
@@ -54,6 +56,7 @@ static int valid_username(const char *username, char *key)
         unsigned char c = (unsigned char)username[i];
         if (!isalnum(c) && c != '_' && c != '-')
             return 0;
+        // lowercase copy so "Bob" and "bob" count as the same name
         key[i] = (char)tolower(c);
     }
     key[length] = '\0';
@@ -76,8 +79,10 @@ int account_register(AccountStore *store, const char *username, const char *pass
     memset(&record, 0, sizeof(record));
     if (!valid_username(username, record.username_key) || !valid_password(password))
         return AUTH_INVALID_INPUT;
+    // make a fresh random salt from OpenSSL
     if (RAND_bytes(salt, SALT_BYTES) != 1)
         return AUTH_STORE_ERROR;
+    // we only ever store the salt and the hash, never the password itself
     to_hex(salt, SALT_BYTES, record.salt);
     if (!hash_password(password, record.salt, record.password_hash))
         return AUTH_STORE_ERROR;
@@ -103,6 +108,7 @@ int account_login(AccountStore *store, const char *username, const char *passwor
      * not reveal which usernames exist */
     if (!valid_username(username, key) || !valid_password(password))
         return AUTH_BAD_CREDENTIALS;
+    // 1 = found, 0 = no such user, -1 = storage error
     int found = store->lookup(store, key, &record);
     if (found < 0)
         return AUTH_STORE_ERROR;
@@ -111,6 +117,7 @@ int account_login(AccountStore *store, const char *username, const char *passwor
         hash_password(password, "00000000000000000000000000000000", hash);
         return AUTH_BAD_CREDENTIALS;
     }
+    // hash what they typed with the saved salt, then compare
     if (!hash_password(password, record.salt, hash))
         return AUTH_STORE_ERROR;
     // Constant-time comparison: no early exit at the first differing byte
@@ -131,9 +138,11 @@ int accounts_read_env(const char *path, const char *key, char *out, unsigned lon
     size_t key_length = strlen(key);
     int found = 0;
     while (!found && fgets(line, sizeof(line), file) != NULL) {
+        // skip lines that are not our key
         if (strncmp(line, key, key_length) != 0 || line[key_length] != '=')
             continue;
         char *value = line + key_length + 1;
+        // cut off the newline at the end
         value[strcspn(value, "\r\n")] = '\0';
         // Allow KEY="value" as well as KEY=value
         size_t length = strlen(value);
@@ -169,6 +178,7 @@ static int file_lookup(AccountStore *store, const char *username_key, AccountRec
     int found = 0;
     while (!found && fgets(line, sizeof(line), file) != NULL) {
         char *save = NULL;
+        // split the line into its 4 parts
         char *key = strtok_r(line, ":\r\n", &save);
         char *name = strtok_r(NULL, ":\r\n", &save);
         char *salt = strtok_r(NULL, ":\r\n", &save);
@@ -192,6 +202,7 @@ static int file_insert(AccountStore *store, const AccountRecord *record)
 {
     FileStore *self = (FileStore *)store;
     AccountRecord existing;
+    // name already taken
     if (file_lookup(store, record->username_key, &existing) == 1)
         return 0;
     // Only the auth thread writes this file, so check-then-append is safe
@@ -222,6 +233,7 @@ AccountStore *accounts_open_file(const char *path)
     FileStore *self = (FileStore *)calloc(1, sizeof(*self));
     if (self == NULL)
         return NULL;
+    // plug in the file versions of lookup, insert and close
     self->base.description = "local file";
     self->base.lookup = file_lookup;
     self->base.insert = file_insert;
