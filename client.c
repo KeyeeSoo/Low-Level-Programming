@@ -1404,7 +1404,8 @@ int main(int argc,char **argv){
     int fbw,fbh;glfwGetFramebufferSize(w,&fbw,&fbh);framebuffer_resized(w,fbw,fbh);
     glMatrixMode(GL_PROJECTION);glLoadIdentity();glOrtho(0,CANVAS_W,CANVAS_H,0,-1,1);
     glMatrixMode(GL_MODELVIEW);
-    audio_init();
+    /* Audio starts after the first frame (see the main loop): opening the sound
+     * device on WSL can take seconds, and the window would stay black meanwhile. */
     render_init("assets/PatrickHand-Regular.ttf");
     art_init();
     if(pthread_create(&net.thread,NULL,network_worker,NULL)!=0){
@@ -1442,6 +1443,8 @@ int main(int argc,char **argv){
             }
             glfwSwapBuffers(w);
             main_frames++;
+            /* The login page is on screen now, so a slow sound device can't keep it black. */
+            if(main_frames==1)audio_init();
             uint64_t frame_finished=monotonic_ms();
             if(frame_finished-frame_started>200)
                 fprintf(stderr,"[client %d MAIN] SLOW FRAME %llu ms (draw+swap)\n",
