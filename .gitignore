@@ -37,3 +37,5 @@ messages.c
 messages.h
 *.log
 .build_stamp
+.game_closed_*
+.fw_ready_*

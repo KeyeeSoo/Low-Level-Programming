@@ -38,6 +38,8 @@ Restart if asked, open Ubuntu once to create your user, then double-click `run.b
 
 It asks which role this laptop plays: **Host** (server + Player 1), **Join** (Player 2, connects to the host) or **Solo** (everything on one laptop, for testing). Only one laptop may pick Host. Two servers on the same network fight over the game, and players and ingredients flicker between them.
 
+**Firewall:** Host and Join show one Windows admin prompt (click Yes). It adds a single firewall rule that lets in only UDP ports 7400–7449 (the game's DDS ports), only for WSL. The rest of the firewall stays on. A minimized "Gingerbread Firewall Watch" window removes the rule once the server and players have all closed. If that window gets closed early and the rule is left behind, remove it with `powershell -ExecutionPolicy Bypass -File firewall.ps1 -Close`. Solo doesn't touch the firewall.
+
 To check the setup, run this inside Ubuntu (`run.bat` also prints it on every launch, with a warning if the default distro isn't 24.04):
 
 ```bash

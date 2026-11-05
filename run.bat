@@ -6,7 +6,7 @@ rem   run.bat join   this laptop is Player 2 and connects to the host
 rem   run.bat solo   server and both players on this laptop (testing)
 rem Only ONE laptop may host: two servers on one network fight over the game
 rem and players and ingredients flicker between them.
-rem Everything runs in WSL's Ubuntu 24.04, installed here if it is missing, so
+rem Everything runs in WSL's Ubuntu 24.04 (an existing one is reused), so
 rem every laptop has the same CycloneDDS (different versions can't connect).
 rem The DDS Security certificates are committed in security/generated/, so every
 rem laptop already has the same ones.
@@ -35,6 +35,16 @@ if errorlevel 3 (set "ROLE=solo") else if errorlevel 2 (set "ROLE=join") else (s
 echo Starting as: %ROLE%
 
 rem ---- Ubuntu 24.04 ----
+rem Use an Ubuntu 24.04 this laptop already has, whatever WSL calls it (often
+rem just "Ubuntu"), so nobody downloads a second copy. Only install if none.
+set "IS2404=grep -q VERSION_ID=.24.04 /etc/os-release"
+set "WSLD=wsl"
+%WSLD% -u root --exec bash -c "%IS2404%" >nul 2>&1
+if not errorlevel 1 goto distro_ready
+set "WSLD=wsl -d Ubuntu"
+%WSLD% -u root --exec bash -c "%IS2404%" >nul 2>&1
+if not errorlevel 1 goto distro_ready
+set "WSLD=wsl -d %DISTRO%"
 %WSLD% -u root --exec true >nul 2>&1
 if not errorlevel 1 goto distro_ready
 echo Installing %DISTRO% in WSL, first run only. This takes a few minutes...
@@ -79,26 +89,35 @@ if errorlevel 1 goto failed
 rem ---- Launch ----
 rem Terminal windows start minimized, so they can't cover the game or take its clicks.
 rem Output goes to server.log, client1.log and client2.log.
-if /i "%ROLE%"=="join" goto launch_join
 if /i "%ROLE%"=="solo" goto launch_solo
 
+rem ---- Firewall (Host and Join only) ----
+rem Opens only UDP 7400-7449 for WSL while the game runs; the watch window
+rem below closes it again once the server and players have all closed.
+set "TOKEN=%RANDOM%%RANDOM%"
+echo Asking Windows to let the other laptop through the firewall (click Yes)...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0firewall.ps1" -Token %TOKEN%
+if errorlevel 1 echo Firewall not opened, so the other laptop may not connect.
+start "Gingerbread Firewall Watch" /min %WSLD% --cd "%~dp0." --exec bash launch.sh wait %TOKEN%
+if /i "%ROLE%"=="join" goto launch_join
+
 :launch_host
-start "Gingerbread Server" /min %WSLD% --cd "%~dp0." --exec bash -c "./server > server.log 2>&1"
+start "Gingerbread Server" /min %WSLD% --cd "%~dp0." --exec bash launch.sh server
 ping -n 3 127.0.0.1 >nul
-start "Gingerbread Player 1" /min %WSLD% --cd "%~dp0." --exec bash -c "./client 1 > client1.log 2>&1"
+start "Gingerbread Player 1" /min %WSLD% --cd "%~dp0." --exec bash launch.sh client 1
 echo Hosting. Player 2 can now start run.bat on their laptop and pick Join.
 ping -n 4 127.0.0.1 >nul
 exit /b 0
 
 :launch_join
-start "Gingerbread Player 2" /min %WSLD% --cd "%~dp0." --exec bash -c "./client 2 > client2.log 2>&1"
+start "Gingerbread Player 2" /min %WSLD% --cd "%~dp0." --exec bash launch.sh client 2
 exit /b 0
 
 :launch_solo
-start "Gingerbread Server" /min %WSLD% --cd "%~dp0." --exec bash -c "./server > server.log 2>&1"
+start "Gingerbread Server" /min %WSLD% --cd "%~dp0." --exec bash launch.sh server
 ping -n 3 127.0.0.1 >nul
-start "Gingerbread Player 1" /min %WSLD% --cd "%~dp0." --exec bash -c "./client 1 > client1.log 2>&1"
-start "Gingerbread Player 2" /min %WSLD% --cd "%~dp0." --exec bash -c "./client 2 > client2.log 2>&1"
+start "Gingerbread Player 1" /min %WSLD% --cd "%~dp0." --exec bash launch.sh client 1
+start "Gingerbread Player 2" /min %WSLD% --cd "%~dp0." --exec bash launch.sh client 2
 exit /b 0
 
 :no_wsl

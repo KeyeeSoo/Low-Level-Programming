@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Linux-side helper for run.bat. Each subcommand is one step of a launch.
 cd "$(dirname "$0")"
+# Fixed DDS ports (7400-7449 on domain 0) instead of random ones, so
+# firewall.ps1 can open just these while the game runs.
+export CYCLONEDDS_URI='<Discovery><ParticipantIndex>auto</ParticipantIndex><MaxAutoParticipantIndex>19</MaxAutoParticipantIndex></Discovery>'
 
 case "${1:-}" in
 build)
@@ -23,8 +26,21 @@ certs)
     # The certificates are committed, so this only runs if they went missing.
     [ -f security/generated/permissions.p7s ] || bash security/make_certs.sh
     ;;
+server)
+    exec ./server > server.log 2>&1
+    ;;
+client)
+    exec ./client "$2" > "client$2.log" 2>&1
+    ;;
+wait)
+    # Tell firewall.ps1 when every game program has closed, so it can remove
+    # its firewall rule. $2 is that run's token.
+    sleep 15
+    while pgrep -x server >/dev/null || pgrep -x client >/dev/null; do sleep 3; done
+    touch ".game_closed_$2"
+    ;;
 *)
-    echo "usage: launch.sh build|stop|certs" >&2
+    echo "usage: launch.sh build|stop|certs|server|client N|wait TOKEN" >&2
     exit 2
     ;;
 esac

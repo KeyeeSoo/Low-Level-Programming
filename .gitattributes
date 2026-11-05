@@ -6,3 +6,4 @@
 *.ttf binary
 *.pdf binary
 *.p7s binary
+*.ps1 text eol=crlf
