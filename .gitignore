@@ -36,3 +36,4 @@ test_trace_integration
 messages.c
 messages.h
 *.log
+.build_stamp

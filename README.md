@@ -36,6 +36,8 @@ wsl --set-default Ubuntu-24.04
 
 Restart if asked, open Ubuntu once to create your user, then double-click `run.bat`. It installs the packages on first run, builds, and starts the game.
 
+It asks which role this laptop plays: **Host** (server + Player 1), **Join** (Player 2, connects to the host) or **Solo** (everything on one laptop, for testing). Only one laptop may pick Host. Two servers on the same network fight over the game, and players and ingredients flicker between them.
+
 To check the setup, run this inside Ubuntu (`run.bat` also prints it on every launch, with a warning if the default distro isn't 24.04):
 
 ```bash
