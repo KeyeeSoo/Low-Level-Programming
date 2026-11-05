@@ -30,18 +30,15 @@ server)
     exec ./server > server.log 2>&1
     ;;
 client)
-    # WSL otherwise draws in software on the CPU (llvmpipe), which made frames
-    # take 200-480 ms. Try the laptop's graphics card (any Intel/AMD/NVIDIA GPU
-    # WSL supports) first. If the client fails straight away with it, e.g. the
-    # window can't open on an old or broken driver, start it again in software,
-    # so the game still runs everywhere.
+    # Software drawing (llvmpipe) by default: on WSL's D3D12 GPU driver the
+    # client crashed at startup ("D3D12: Removing Device", exit 139), which
+    # showed as a black window. GINGERBREAD_GPU=1 tries the graphics card,
+    # falling back to software if the client fails within 20 s.
     log="client$2.log"
-    if [ -e /dev/dxg ] && [ -e /usr/lib/wsl/lib/libd3d12.so ]; then
+    if [ "${GINGERBREAD_GPU:-0}" = 1 ] && [ -e /dev/dxg ] && [ -e /usr/lib/wsl/lib/libd3d12.so ]; then
         started=$(date +%s)
         GALLIUM_DRIVER=d3d12 ./client "$2" > "$log" 2>&1
         status=$?
-        # 0 = the player quit normally. A failure after 20 s is not a startup
-        # problem, so don't relaunch then either.
         if [ "$status" -eq 0 ] || [ $(( $(date +%s) - started )) -gt 20 ]; then
             exit "$status"
         fi
