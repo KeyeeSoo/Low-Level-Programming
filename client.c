@@ -45,7 +45,8 @@ enum {
     HOVER_TARGET_DISCONNECT = 402,
     HOVER_TARGET_PLAY_AGAIN = 403,
     HOVER_TARGET_CHAT = 404,
-    HOVER_TARGET_ACCOUNT = 405
+    HOVER_TARGET_ACCOUNT = 405,
+    HOVER_TARGET_QUIT = 406
 };
 
 /* Window sizes offered in Settings, as a fraction of the full canvas. */
@@ -67,7 +68,7 @@ typedef struct {
     char username[USERNAME_MAX+1],password[PASSWORD_MAX+1];
     int show_password;
     LoginHit login_focus,login_hover;
-    int play_again_hover;
+    int play_again_hover,quit_hover;
     char login_message[96];
     int login_message_is_error,login_busy;
     double login_started;
@@ -1040,6 +1041,10 @@ static void mouse_button(GLFWwindow *w,int button,int action,int mods){
         send_action(ACTION_RESTART);
         return;
     }
+    if(action==GLFW_PRESS && game_finished() && art_quit_hit_test(p.x,p.y)){
+        glfwSetWindowShouldClose(w,GLFW_TRUE); /* Same as the Exit button. */
+        return;
+    }
     if(!can_trace())return;
     if(action==GLFW_PRESS)trace_mouse_down(&app.trace,p.x,p.y);
     if(action==GLFW_RELEASE && app.trace.status==TRACE_DRAWING){
@@ -1098,8 +1103,11 @@ static void cursor_move(GLFWwindow *w,double x,double y){
     if(game_finished()){
         TracePoint p=window_to_canvas(x,y);
         app.play_again_hover=art_play_again_hit_test(p.x,p.y);
+        app.quit_hover=art_quit_hit_test(p.x,p.y);
         if(hover_target==HOVER_TARGET_NONE && app.play_again_hover)
             hover_target=HOVER_TARGET_PLAY_AGAIN;
+        if(hover_target==HOVER_TARGET_NONE && app.quit_hover)
+            hover_target=HOVER_TARGET_QUIT;
     }
     if(hover_target==HOVER_TARGET_NONE && !showing_disconnect &&
        art_chat_hit_test(hover_point.x,hover_point.y))
@@ -1237,7 +1245,7 @@ static void draw_scene(double now){
     art_draw_status(line,time_fraction,(app.state.int_timer_remaining_ms+999)/1000);
     if(app.state.int_phase==PHASE_WIN || app.state.int_phase==PHASE_LOSE)
         art_draw_end_card(app.state.int_phase==PHASE_WIN,app.state.int_recipes_completed,
-                          app.play_again_hover,(float)scenery_time);
+                          app.play_again_hover,app.quit_hover,(float)scenery_time);
 }
 static void draw_trace(void){
     if(app.screen!=SCREEN_GAME || !app.known_state || (app.state.int_phase!=PHASE_TRACE && app.state.int_phase!=PHASE_STIR))return;

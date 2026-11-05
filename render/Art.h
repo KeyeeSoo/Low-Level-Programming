@@ -50,8 +50,10 @@ void art_draw_status(const char *message, float time_fraction, int seconds_left)
 void art_draw_trace_panel(const char *title, const char *subtitle);
 
 /* A big win or lose card over the attic. */
-void art_draw_end_card(int won, int recipes_won, int play_again_hovered, float time_s);
+void art_draw_end_card(int won, int recipes_won, int play_again_hovered, int quit_hovered,
+                       float time_s);
 int art_play_again_hit_test(float x, float y);
+int art_quit_hit_test(float x, float y);
 
 /* ---- Main menu ---- */
 typedef enum { MENU_HIT_NONE, MENU_HIT_PLAY, MENU_HIT_SETTINGS, MENU_HIT_QUIT } MenuHit;

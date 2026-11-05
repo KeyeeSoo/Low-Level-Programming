@@ -85,10 +85,13 @@
 /* Everything clickable on the form: x, y, width, height in painting pixels. */
 
 
-#define PLAY_AGAIN_W 170.0f
+/* End card: Play Again and Quit side by side, centred under the message. */
+#define PLAY_AGAIN_W 150.0f
 #define PLAY_AGAIN_H 40.0f
-#define PLAY_AGAIN_X (ATTIC_X + ATTIC_W * 0.5f - PLAY_AGAIN_W * 0.5f)
+#define END_BUTTON_GAP 14.0f
+#define PLAY_AGAIN_X (ATTIC_X + ATTIC_W * 0.5f - PLAY_AGAIN_W - END_BUTTON_GAP * 0.5f)
 #define PLAY_AGAIN_Y (ATTIC_Y + ATTIC_H * 0.5f + 28.0f)
+#define QUIT_X (ATTIC_X + ATTIC_W * 0.5f + END_BUTTON_GAP * 0.5f)
 
 /* Gameplay Exit button, in logical canvas coordinates. */
 #define EXIT_BUTTON_X 700.0f

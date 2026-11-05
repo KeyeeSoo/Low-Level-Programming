@@ -376,7 +376,14 @@ int art_play_again_hit_test(float x, float y)
            y >= PLAY_AGAIN_Y && y < PLAY_AGAIN_Y + PLAY_AGAIN_H;
 }
 
-void art_draw_end_card(int won, int recipes_won, int play_again_hovered, float time_s)
+int art_quit_hit_test(float x, float y)
+{
+    return x >= QUIT_X && x < QUIT_X + PLAY_AGAIN_W &&
+           y >= PLAY_AGAIN_Y && y < PLAY_AGAIN_Y + PLAY_AGAIN_H;
+}
+
+void art_draw_end_card(int won, int recipes_won, int play_again_hovered, int quit_hovered,
+                       float time_s)
 {
     const float cx = (float)ATTIC_X + ATTIC_W * 0.5f, cy = ATTIC_Y + ATTIC_H * 0.5f;
     render_color_a(0x08060Fu, 0.68f);
@@ -397,18 +404,20 @@ void art_draw_end_card(int won, int recipes_won, int play_again_hovered, float t
         snprintf(line, sizeof(line), "The witch wins this time. %d of %d potions brewed.",
                  recipes_won, RECIPES_TO_WIN);
     render_text_centered(cx, cy - 22, 16.5f, line);
-    /* One gingerbread man either side of the button. */
+    /* One gingerbread man either side of the buttons. */
     for (int i = 0; i < 2; i++) {
         float hop = 0.0f;
         if (won)
             hop = fabsf(sinf(time_s * 3 + (float)i)) * 8.0f;
         glPushMatrix();
-        glTranslatef(pick_float(i == 0, cx - 140, cx + 140), cy + 72 - hop, 0);
+        glTranslatef(pick_float(i == 0, cx - 182, cx + 182), cy + 72 - hop, 0);
         glCallList(list_gingerbread);
         glPopMatrix();
     }
     login_button(PLAY_AGAIN_X, PLAY_AGAIN_Y, PLAY_AGAIN_W, PLAY_AGAIN_H, 20, "Play Again",
                  0x3F9B57u, 0x4FB56Au, play_again_hovered, 0);
+    login_button(QUIT_X, PLAY_AGAIN_Y, PLAY_AGAIN_W, PLAY_AGAIN_H, 20, "Quit",
+                 0xA8423Bu, 0xC2544Bu, quit_hovered, 0);
 }
 
 void art_draw_login(const LoginView *view, float time_s)
