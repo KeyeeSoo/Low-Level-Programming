@@ -4,6 +4,8 @@
    Same JoinRequest/JoinResponse/Input/Position DDS communication, new GameState,
    GameAction, C Render module and mouse rune detection. */
 #include <GLFW/glfw3.h>
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_mixer.h>
 #include <dds/dds.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -28,8 +30,23 @@
 #define CHAT_HISTORY 32
 /* How long to wait for the server before telling the player it isn't there. */
 #define LOGIN_TIMEOUT_S 12.0
+#define AUDIO_SAMPLE_RATE 44100
+#define AUDIO_BUFFER_SIZE 256
+#define AUDIO_CHANNEL_COUNT 8
+#define HOVER_SFX_CHANNEL 0
 
 typedef enum { SCREEN_MENU, SCREEN_LOGIN, SCREEN_SETTINGS, SCREEN_GAME } Screen;
+enum {
+    HOVER_TARGET_NONE = 0,
+    HOVER_TARGET_MENU_BASE = 100,
+    HOVER_TARGET_SETTINGS_BASE = 200,
+    HOVER_TARGET_LOGIN_BASE = 300,
+    HOVER_TARGET_EXIT = 401,
+    HOVER_TARGET_DISCONNECT = 402,
+    HOVER_TARGET_PLAY_AGAIN = 403,
+    HOVER_TARGET_CHAT = 404,
+    HOVER_TARGET_ACCOUNT = 405
+};
 
 /* Window sizes offered in Settings, as a fraction of the full canvas. */
 static const float window_size_scales[WINDOW_SIZE_COUNT]={0.7f,1.0f,1.25f};
@@ -73,6 +90,7 @@ typedef struct {
     /* Last known partner name, still needed after the server clears a guest's seat. */
     char partner_name[USERNAME_MAX+1];
     double last_input_time;
+    int last_hover_target;
     /* Purely visual walk state, derived from the server's position updates. */
     int drawn_x[MAX_PLAYERS],drawn_y[MAX_PLAYERS],facing[MAX_PLAYERS];
     double last_step_time[MAX_PLAYERS];
@@ -80,6 +98,10 @@ typedef struct {
     char network_error[256];
 } Client;
 static Client app;
+static Mix_Chunk *hover_sfx = NULL;
+static Mix_Music *background_music = NULL;
+static int audio_open = 0;
+static int sdl_audio_started = 0;
 
 /* DDS operates exclusively on the network thread.  Only this small bridge is
  * shared with the main thread. Never hold its mutex during DDS or OpenGL calls. */
@@ -685,6 +707,75 @@ static int can_trace(void){
         (app.state.int_phase==PHASE_TRACE || app.state.int_phase==PHASE_STIR) &&
         !app.pending_result;
 }
+static void audio_play_hover_sfx(void){
+    if(!audio_open || hover_sfx==NULL)return;
+    (void)Mix_PlayChannel(HOVER_SFX_CHANNEL,hover_sfx,0);
+}
+static void audio_track_hover_target(int target){
+    if(target==app.last_hover_target)return;
+    app.last_hover_target=target;
+    if(target!=HOVER_TARGET_NONE)audio_play_hover_sfx();
+}
+static void audio_init(void){
+    if(SDL_Init(SDL_INIT_AUDIO)!=0){
+        fprintf(stderr,"Audio init failed: %s\n",SDL_GetError());
+        return;
+    }
+    sdl_audio_started=1;
+    int ready=Mix_Init(MIX_INIT_MP3);
+    if((ready&MIX_INIT_MP3)!=MIX_INIT_MP3)
+        fprintf(stderr,"MP3 decoder unavailable: %s\n",Mix_GetError());
+    if(Mix_OpenAudio(AUDIO_SAMPLE_RATE,MIX_DEFAULT_FORMAT,2,AUDIO_BUFFER_SIZE)!=0){
+        fprintf(stderr,"Audio device open failed: %s\n",Mix_GetError());
+        return;
+    }
+    audio_open=1;
+    Mix_AllocateChannels(AUDIO_CHANNEL_COUNT);
+    Mix_ReserveChannels(1);
+    Mix_Volume(HOVER_SFX_CHANNEL,MIX_MAX_VOLUME);
+    hover_sfx=Mix_LoadWAV("assets/llp sfx.mp3");
+    if(hover_sfx==NULL)
+        fprintf(stderr,"Could not load hover SFX: %s\n",Mix_GetError());
+    background_music=Mix_LoadMUS("assets/llp music.mp3");
+    if(background_music==NULL){
+        fprintf(stderr,"Could not load background music: %s\n",Mix_GetError());
+    }else if(Mix_PlayMusic(background_music,-1)!=0){
+        fprintf(stderr,"Could not start background music: %s\n",Mix_GetError());
+    }
+}
+static void audio_cleanup(void){
+    if(audio_open){
+        Mix_HaltMusic();
+        if(background_music!=NULL){
+            Mix_FreeMusic(background_music);
+            background_music=NULL;
+        }
+        if(hover_sfx!=NULL){
+            Mix_FreeChunk(hover_sfx);
+            hover_sfx=NULL;
+        }
+        Mix_CloseAudio();
+        audio_open=0;
+    }
+    Mix_Quit();
+    if(sdl_audio_started){
+        SDL_QuitSubSystem(SDL_INIT_AUDIO);
+        SDL_Quit();
+        sdl_audio_started=0;
+    }
+}
+static int menu_hover_target(MenuHit hit){
+    if(hit==MENU_HIT_NONE)return HOVER_TARGET_NONE;
+    return HOVER_TARGET_MENU_BASE+(int)hit;
+}
+static int settings_hover_target(SettingsHit hit){
+    if(hit==SETTINGS_HIT_NONE)return HOVER_TARGET_NONE;
+    return HOVER_TARGET_SETTINGS_BASE+(int)hit;
+}
+static int login_hover_target(LoginHit hit){
+    if(hit==LOGIN_HIT_NONE)return HOVER_TARGET_NONE;
+    return HOVER_TARGET_LOGIN_BASE+(int)hit;
+}
 /* The canvas is letterboxed into the window so it can be resized to fit small
  * screens. Tracing always works in canvas coordinates, whatever the window size. */
 static float view_scale=1.0f,view_x=0.0f,view_y=0.0f;
@@ -970,6 +1061,7 @@ static void cursor_move(GLFWwindow *w,double x,double y){
     (void)w;
     if(app.screen!=SCREEN_GAME){
         TracePoint p=window_to_canvas(x,y);
+        int hover_target=HOVER_TARGET_NONE;
         /* Moving the mouse only needs a new frame if the highlight actually changed. */
         if(app.screen==SCREEN_MENU){
             MenuHit hit=art_menu_hit_test(p.x,p.y);
@@ -977,26 +1069,42 @@ static void cursor_move(GLFWwindow *w,double x,double y){
             if(hit!=app.menu_hover || account_hover!=app.account_hover)redraw_needed=1;
             app.menu_hover=hit;
             app.account_hover=account_hover;
+            if(account_hover)hover_target=HOVER_TARGET_ACCOUNT;
+            else hover_target=menu_hover_target(hit);
         }else if(app.screen==SCREEN_SETTINGS){
             SettingsHit hit=art_settings_hit_test(p.x,p.y);
             if(hit!=app.settings_hover)redraw_needed=1;
             app.settings_hover=hit;
+            hover_target=settings_hover_target(hit);
         }else{
             LoginHit hit=art_login_hit_test(p.x,p.y);
             if(hit!=app.login_hover)redraw_needed=1;
             app.login_hover=hit;
+            hover_target=login_hover_target(hit);
         }
+        audio_track_hover_target(hover_target);
         return;
     }
     TracePoint hover_point=window_to_canvas(x,y);
     int exit_hover=art_exit_hit_test(hover_point.x,hover_point.y);
-    int disconnect_hover=art_disconnect_hit_test(hover_point.x,hover_point.y);
+    int showing_disconnect=app.known_state &&
+        (app.state.int_phase==PHASE_DISCONNECTED || app.returning_to_menu);
+    int disconnect_hover=showing_disconnect && art_disconnect_hit_test(hover_point.x,hover_point.y);
     if(exit_hover!=app.exit_hover || disconnect_hover!=app.disconnect_hover)redraw_needed=1;
     app.exit_hover=exit_hover;app.disconnect_hover=disconnect_hover;
+    int hover_target=HOVER_TARGET_NONE;
+    if(exit_hover)hover_target=HOVER_TARGET_EXIT;
+    else if(disconnect_hover)hover_target=HOVER_TARGET_DISCONNECT;
     if(game_finished()){
         TracePoint p=window_to_canvas(x,y);
         app.play_again_hover=art_play_again_hit_test(p.x,p.y);
+        if(hover_target==HOVER_TARGET_NONE && app.play_again_hover)
+            hover_target=HOVER_TARGET_PLAY_AGAIN;
     }
+    if(hover_target==HOVER_TARGET_NONE && !showing_disconnect &&
+       art_chat_hit_test(hover_point.x,hover_point.y))
+        hover_target=HOVER_TARGET_CHAT;
+    audio_track_hover_target(hover_target);
     if(can_trace() && app.trace.status==TRACE_DRAWING){
         TracePoint p=window_to_canvas(x,y);
         trace_mouse_move(&app.trace,p.x,p.y);
@@ -1288,10 +1396,15 @@ int main(int argc,char **argv){
     int fbw,fbh;glfwGetFramebufferSize(w,&fbw,&fbh);framebuffer_resized(w,fbw,fbh);
     glMatrixMode(GL_PROJECTION);glLoadIdentity();glOrtho(0,CANVAS_W,CANVAS_H,0,-1,1);
     glMatrixMode(GL_MODELVIEW);
+    audio_init();
     render_init("assets/PatrickHand-Regular.ttf");
     art_init();
     if(pthread_create(&net.thread,NULL,network_worker,NULL)!=0){
-        perror("pthread_create network_worker");glfwDestroyWindow(w);glfwTerminate();return 1;
+        perror("pthread_create network_worker");
+        audio_cleanup();
+        glfwDestroyWindow(w);
+        glfwTerminate();
+        return 1;
     }
     uint64_t last_main_log=monotonic_ms();
     unsigned long main_frames=0;
@@ -1340,6 +1453,7 @@ int main(int argc,char **argv){
     /* Exit safely: network worker stops before GLFW/OpenGL teardown. */
     pthread_mutex_lock(&net.mutex);net.stop=1;notify_network_locked();pthread_mutex_unlock(&net.mutex);
     pthread_join(net.thread,NULL);
+    audio_cleanup();
     art_cleanup();render_cleanup();glfwDestroyWindow(w);glfwTerminate();
     return 0;
 }
