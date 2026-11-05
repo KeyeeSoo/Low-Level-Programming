@@ -1,3 +1,5 @@
+// Draws the 10 ingredient sprites, each one centred on (0, 0) and about 44 px wide
+// every shape is drawn twice: a dark outline first, then the colour on top
 #include "Draw_Ingredients.h"
 #include "Draw_Common.h"
 #include <GLFW/glfw3.h>
@@ -6,10 +8,12 @@
 #include "Art_Style.h"
 
 
+// petals spread evenly in a circle, used for the moonflower
 static void petal_ring(int petals, float distance, float rx, float ry, unsigned fill)
 {
     for (int i = 0; i < petals; i++) {
         glPushMatrix();
+        // turn to this petal, -90 so the first one points up
         glRotatef(360.0f * (float)i / (float)petals - 90.0f, 0, 0, 1);
         render_color(INK);
         render_ellipse(distance, 0, rx + 1.2f, ry + 1.2f);
@@ -19,6 +23,7 @@ static void petal_ring(int petals, float distance, float rx, float ry, unsigned 
     }
 }
 
+// one green leaf with a vein line, rotated to any angle
 static void leaf(float x, float y, float degrees, float length, unsigned fill)
 {
     glPushMatrix();
@@ -30,6 +35,7 @@ static void leaf(float x, float y, float degrees, float length, unsigned fill)
     glPopMatrix();
 }
 
+// white flower with a yellow centre and three leaves
 static void draw_moonflower(void)
 {
     leaf(-6, 7, 160, 17, 0x4FA35Au);
@@ -39,8 +45,10 @@ static void draw_moonflower(void)
     outlined_ellipse(0, 0, 3.6f, 3.6f, 0xF3C93Eu);
 }
 
+// ginger root made of bumpy lobes
 static void draw_ginger(void)
 {
+    // each lobe is x, y, width, height
     const float lobes[][4] = {{-11, 6, 8, 6}, {-3, -4, 6.5f, 8}, {6, 3, 10, 7},
                               {14, -6, 5, 7}, {-13, -5, 4.5f, 5}, {2, 12, 5, 5}};
     render_color(INK);
@@ -49,15 +57,17 @@ static void draw_ginger(void)
     render_color(0xE2B56Du);
     for (int i = 0; i < 6; i++)
         render_ellipse(lobes[i][0], lobes[i][1], lobes[i][2], lobes[i][3]);
+    // little lines for the skin texture
     render_color(0xBC8C47u);
     render_line(-9, 8, -3, 6, 1.1f);
     render_line(4, 5, 11, 3, 1.1f);
     render_line(-5, -6, -1, -8, 1.1f);
 }
 
+// black feather, tilted
 static void draw_feather(void)
 {
-    /* A curved blade built from overlapping barbs along a quill. */
+    // a curved blade built from overlapping barbs along a quill
     glPushMatrix();
     glRotatef(-38, 0, 0, 1);
     render_color(0x14121Cu);
@@ -75,6 +85,7 @@ static void draw_feather(void)
     glPopMatrix();
 }
 
+// one crystal shard: light left half and dark right half look like 3D
 static void crystal(float x, float base, float half_width, float height, unsigned light, unsigned dark)
 {
     render_color(INK);
@@ -88,6 +99,7 @@ static void crystal(float x, float base, float half_width, float height, unsigne
     render_quad(x, base, x + half_width, base, x + half_width, base - height * 0.7f, x, base - height);
 }
 
+// three crystals, the tall one in the middle
 static void draw_sugar_glass(void)
 {
     crystal(-11, 14, 5.5f, 19, 0xCFE6FFu, 0x9EC4F2u);
@@ -95,6 +107,7 @@ static void draw_sugar_glass(void)
     crystal(0, 16, 7.5f, 33, 0xE6F3FFu, 0xABD0F7u);
 }
 
+// grey rock with green moss tufts
 static void draw_moss(void)
 {
     outlined_ellipse(0, 8, 19, 10, 0x77727Eu);
@@ -103,14 +116,17 @@ static void draw_moss(void)
     for (int i = 0; i < 6; i++)
         render_ellipse(tufts[i][0], tufts[i][1], tufts[i][2] + 1.3f, tufts[i][2] * 0.85f + 1.3f);
     for (int i = 0; i < 6; i++) {
+        // alternate two greens so the tufts stand out
         render_color(pick_color(i % 2, 0x5FA347u, 0x79BB57u));
         render_ellipse(tufts[i][0], tufts[i][1], tufts[i][2], tufts[i][2] * 0.85f);
     }
+    // small highlights on top
     render_color(0xA7DB80u);
     render_ellipse(-4, -5, 2.4f, 1.6f);
     render_ellipse(8, -2, 2.0f, 1.4f);
 }
 
+// bunch of purple berries with two leaves
 static void draw_berries(void)
 {
     leaf(-1, -10, -150, 15, 0x4A9450u);
@@ -118,11 +134,13 @@ static void draw_berries(void)
     const float berries[][2] = {{-9, 2}, {8, 1}, {0, -3}, {-5, 11}, {6, 11}};
     for (int i = 0; i < 5; i++) {
         outlined_ellipse(berries[i][0], berries[i][1], 7.2f, 7.2f, 0x6A3AA2u);
+        // shine spot on each berry
         render_color(0xB997E8u);
         render_ellipse(berries[i][0] - 2.4f, berries[i][1] - 2.6f, 1.7f, 1.7f);
     }
 }
 
+// red mushroom cap with white spots
 static void draw_toadstool(void)
 {
     outlined_box(-5, 0, 10, 18, 4, 0xF5ECD8u);
@@ -132,6 +150,7 @@ static void draw_toadstool(void)
     render_color(0xD94A3Fu);
     render_ellipse(0, -2, 18, 14);
     render_rect(-18, -2, 36, 3.6f);
+    // the white spots
     render_color(0xFFF4E2u);
     render_ellipse(-8, -5, 3.6f, 3.2f);
     render_ellipse(6, -9, 3.2f, 2.8f);
@@ -139,6 +158,7 @@ static void draw_toadstool(void)
     render_ellipse(-1, -1, 2.0f, 1.8f);
 }
 
+// pile of ash with a flame, orange outside and yellow inside
 static void draw_phoenix_ash(void)
 {
     outlined_ellipse(0, 11, 19, 8, 0x8D8690u);
@@ -155,6 +175,7 @@ static void draw_phoenix_ash(void)
     render_tri(-5, 2, 5, 2, 1, -9);
 }
 
+// teardrop shape: a triangle on top of a circle, with a white shine
 static void droplet(float x, float y, float size, unsigned fill)
 {
     render_color(INK);
@@ -167,6 +188,7 @@ static void droplet(float x, float y, float size, unsigned fill)
     render_ellipse(x - size * 0.35f, y - size * 0.15f, size * 0.24f, size * 0.32f);
 }
 
+// one big drop and two small ones
 static void draw_silver_dew(void)
 {
     droplet(0, 5, 11, 0xCBD7E4u);
@@ -174,9 +196,11 @@ static void draw_silver_dew(void)
     droplet(14, 13, 6, 0xB6C5D6u);
 }
 
+// green vine with pale thorns
 static void draw_thornvine(void)
 {
-    /* A vine sampled along a sine curve, with thorns on alternating sides. */
+    // a vine sampled along a sine curve, with thorns on alternating sides
+    // first pass draws the dark outline of the vine
     float px = -18, py = 9;
     for (int i = 1; i <= 12; i++) {
         float x = -18.0f + (float)i * 3.0f;
@@ -186,6 +210,7 @@ static void draw_thornvine(void)
         px = x;
         py = y;
     }
+    // second pass draws the green vine and the thorns on top
     px = -18;
     py = 9;
     for (int i = 1; i <= 12; i++) {
@@ -205,11 +230,13 @@ static void draw_thornvine(void)
     leaf(16, 8, -60, 11, 0x5FA347u);
 }
 
+// one draw function per ingredient, in the same order as the ingredient IDs
 static void (*const ingredient_painters[INGREDIENT_COUNT])(void) = {
     draw_moonflower, draw_ginger, draw_feather, draw_sugar_glass, draw_moss,
     draw_berries, draw_toadstool, draw_phoenix_ash, draw_silver_dew, draw_thornvine
 };
 
+// draw ingredient number item, ignores bad numbers
 void draw_ingredient_sprite(int item)
 {
     if (item >= 0 && item < INGREDIENT_COUNT)
