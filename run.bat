@@ -52,12 +52,13 @@ rem ---- Dependencies ----
 rem Packages = Week 1 slide 8, plus build-essential (gcc, which a fresh Ubuntu
 rem lacks), pkg-config (build.sh needs it), openssl and libssl-dev (DDS
 rem encryption certificates, password hashing) and libmongoc-dev (MongoDB
-rem accounts, used only when a .env file is present).
-%WSLD% --exec bash -c "command -v gcc && command -v idlc && pkg-config --exists glfw3 CycloneDDS gl libcrypto libmongoc-1.0" >nul 2>&1
+rem accounts, used only when a .env file is present), libsdl2-dev and
+rem libsdl2-mixer-dev (music and sound effects).
+%WSLD% --exec bash -c "command -v gcc && command -v idlc && pkg-config --exists glfw3 CycloneDDS gl libcrypto libmongoc-1.0 sdl2 SDL2_mixer" >nul 2>&1
 if not errorlevel 1 goto dependencies_ready
 echo Installing dependencies, first run only. This takes a few minutes...
 rem Running as WSL's root user is what avoids the sudo password prompt.
-%WSLD% -u root --exec bash -c "export DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a; apt-get update && apt-get install -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold build-essential libgl1-mesa-dev libglfw3-dev cyclonedds-dev cyclonedds-tools pkg-config openssl libssl-dev libmongoc-dev"
+%WSLD% -u root --exec bash -c "export DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a; apt-get update && apt-get install -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold build-essential libgl1-mesa-dev libglfw3-dev cyclonedds-dev cyclonedds-tools pkg-config openssl libssl-dev libmongoc-dev libsdl2-dev libsdl2-mixer-dev"
 if errorlevel 1 goto failed
 :dependencies_ready
 

@@ -28,7 +28,7 @@ gcc $FLAGS $SECURE_FLAGS client.c GameRules.c \
     render/Draw_Background.c render/Draw_Ingredients.c \
     render/Draw_Main.c render/Draw_UI.c \
     Trace.c SecureDds.c messages.c -o client \
-    $(pkg-config --cflags --libs glfw3 CycloneDDS) -lGL -lm # Standalone tests do not depend on DDS or GLFW
+    $(pkg-config --cflags --libs glfw3 CycloneDDS sdl2 SDL2_mixer) -lGL -lm # Standalone tests do not depend on DDS or GLFW
 gcc $FLAGS test_game.c GameRules.c Trace.c -o test_game -lm
 gcc $FLAGS test_threads.c ServerBridge.c GameRules.c -o test_threads -lm
 gcc $FLAGS test_recipe_preview.c GameRules.c -o test_recipe_preview -lm
