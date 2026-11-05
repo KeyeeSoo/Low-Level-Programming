@@ -1,4 +1,4 @@
-/* Login rules, password hashing and the local-file account store. */
+// Login rules, password hashing and the local-file account store
 #define _POSIX_C_SOURCE 200809L
 #include "Accounts.h"
 
@@ -13,12 +13,13 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-/* Slow on purpose: makes guessing passwords from a stolen store expensive.
- * Runs on the server's auth thread, so it can never stall the game loop. */
+/* Slow on purpose: makes guessing passwords from a stolen store expensive,
+ * runs on the server's auth thread so it can never stall the game loop */
 #define PBKDF2_ITERATIONS 200000
 #define SALT_BYTES 16
 #define HASH_BYTES 32
 
+// turn raw bytes into a hex string so they can be saved as text
 static void to_hex(const unsigned char *bytes, int count, char *out)
 {
     static const char digits[] = "0123456789abcdef";
@@ -29,6 +30,7 @@ static void to_hex(const unsigned char *bytes, int count, char *out)
     out[count * 2] = '\0';
 }
 
+// hash the password with its salt using PBKDF2-SHA256
 static int hash_password(const char *password, const char *salt_hex, char *hash_hex)
 {
     unsigned char hash[HASH_BYTES];
@@ -37,11 +39,12 @@ static int hash_password(const char *password, const char *salt_hex, char *hash_
                           PBKDF2_ITERATIONS, EVP_sha256(), HASH_BYTES, hash) != 1)
         return 0;
     to_hex(hash, HASH_BYTES, hash_hex);
+    // wipe the raw hash from memory
     OPENSSL_cleanse(hash, sizeof(hash));
     return 1;
 }
 
-/* Letters, digits, _ and -, so a name is always safe in a file, a query or on screen. */
+// Letters, digits, _ and -, so a name is always safe in a file, a query or on screen
 static int valid_username(const char *username, char *key)
 {
     size_t length = strlen(username);
@@ -57,12 +60,14 @@ static int valid_username(const char *username, char *key)
     return 1;
 }
 
+// only checks the length, any characters are fine
 static int valid_password(const char *password)
 {
     size_t length = strlen(password);
     return length >= PASSWORD_MIN && length <= PASSWORD_MAX;
 }
 
+// sign up: check the input, make a random salt, hash and save the account
 int account_register(AccountStore *store, const char *username, const char *password,
                      char display_name[USERNAME_MAX + 1])
 {
@@ -77,6 +82,7 @@ int account_register(AccountStore *store, const char *username, const char *pass
     if (!hash_password(password, record.salt, record.password_hash))
         return AUTH_STORE_ERROR;
     snprintf(record.username, sizeof(record.username), "%s", username);
+    // 1 = saved, 0 = name already taken, -1 = storage error
     int inserted = store->insert(store, &record);
     if (inserted < 0)
         return AUTH_STORE_ERROR;
@@ -86,6 +92,7 @@ int account_register(AccountStore *store, const char *username, const char *pass
     return AUTH_OK;
 }
 
+// log in: look up the account and check the password hash matches
 int account_login(AccountStore *store, const char *username, const char *password,
                   char display_name[USERNAME_MAX + 1])
 {
@@ -93,20 +100,20 @@ int account_login(AccountStore *store, const char *username, const char *passwor
     char key[USERNAME_MAX + 1];
     char hash[ACCOUNT_HASH_HEX];
     /* One message for "no such user" and "wrong password": the response must
-     * not reveal which usernames exist. */
+     * not reveal which usernames exist */
     if (!valid_username(username, key) || !valid_password(password))
         return AUTH_BAD_CREDENTIALS;
     int found = store->lookup(store, key, &record);
     if (found < 0)
         return AUTH_STORE_ERROR;
     if (found == 0) {
-        /* Spend the same time as a real check, so timing doesn't reveal it either. */
+        // Spend the same time as a real check, so timing doesn't reveal it either
         hash_password(password, "00000000000000000000000000000000", hash);
         return AUTH_BAD_CREDENTIALS;
     }
     if (!hash_password(password, record.salt, hash))
         return AUTH_STORE_ERROR;
-    /* Constant-time comparison: no early exit at the first differing byte. */
+    // Constant-time comparison: no early exit at the first differing byte
     if (strlen(record.password_hash) != HASH_BYTES * 2 ||
         CRYPTO_memcmp(hash, record.password_hash, HASH_BYTES * 2) != 0)
         return AUTH_BAD_CREDENTIALS;
@@ -114,6 +121,7 @@ int account_login(AccountStore *store, const char *username, const char *passwor
     return AUTH_OK;
 }
 
+// read one KEY=value line from the .env file
 int accounts_read_env(const char *path, const char *key, char *out, unsigned long size)
 {
     FILE *file = fopen(path, "r");
@@ -127,7 +135,7 @@ int accounts_read_env(const char *path, const char *key, char *out, unsigned lon
             continue;
         char *value = line + key_length + 1;
         value[strcspn(value, "\r\n")] = '\0';
-        /* Allow KEY="value" as well as KEY=value. */
+        // Allow KEY="value" as well as KEY=value
         size_t length = strlen(value);
         if (length >= 2 && (value[0] == '"' || value[0] == '\'') && value[length - 1] == value[0]) {
             value[length - 1] = '\0';
@@ -139,22 +147,24 @@ int accounts_read_env(const char *path, const char *key, char *out, unsigned lon
         }
     }
     fclose(file);
+    // the line could have a secret in it, so wipe it
     OPENSSL_cleanse(line, sizeof(line));
     return found;
 }
 
-/* ---- Local file: one "key:username:salt:hash" line per account --------- */
+// Local file: one "key:username:salt:hash" line per account
 typedef struct {
     AccountStore base;
     char path[512];
 } FileStore;
 
+// find an account in the file by its lowercase name
 static int file_lookup(AccountStore *store, const char *username_key, AccountRecord *out)
 {
     FileStore *self = (FileStore *)store;
     FILE *file = fopen(self->path, "r");
     if (file == NULL)
-        return 0; /* No file yet just means no accounts yet. */
+        return 0; // no file yet just means no accounts yet
     char line[256];
     int found = 0;
     while (!found && fgets(line, sizeof(line), file) != NULL) {
@@ -177,13 +187,15 @@ static int file_lookup(AccountStore *store, const char *username_key, AccountRec
     return found;
 }
 
+// add a new account line, unless the name is already taken
 static int file_insert(AccountStore *store, const AccountRecord *record)
 {
     FileStore *self = (FileStore *)store;
     AccountRecord existing;
     if (file_lookup(store, record->username_key, &existing) == 1)
         return 0;
-    /* Only the auth thread writes this file, so check-then-append is safe. */
+    // Only the auth thread writes this file, so check-then-append is safe
+    // only our user can read or write the file
     int fd = open(self->path, O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR);
     if (fd < 0)
         return -1;
@@ -204,6 +216,7 @@ static void file_close(AccountStore *store)
     free(store);
 }
 
+// set up the local file store, used when MongoDB is not available
 AccountStore *accounts_open_file(const char *path)
 {
     FileStore *self = (FileStore *)calloc(1, sizeof(*self));
