@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Generates everything DDS Security needs, into security/generated/:
 #   a private CA, one identity per role, and the CA-signed governance and
-#   permissions documents. Keys stay local: they are never committed.
+#   permissions documents. The output is committed so every teammate shares
+#   one CA; if you regenerate it, commit the new files for everyone.
 set -euo pipefail
 cd "$(dirname "$0")"
 OUT=generated

@@ -25,6 +25,25 @@ The server **still ends the run if the wrong ingredient is added**, as in the wo
 
 Both clients see the same server-generated recipe, updated progress and current player role.
 
+## Windows setup (WSL, Ubuntu 24.04)
+
+The game is set up for Ubuntu 24.04 under WSL. On a new laptop, in an admin PowerShell:
+
+```powershell
+wsl --install -d Ubuntu-24.04
+wsl --set-default Ubuntu-24.04
+```
+
+Restart if asked, open Ubuntu once to create your user, then double-click `run.bat`. It installs the packages on first run, builds, and starts the game.
+
+To check the setup, run this inside Ubuntu (`run.bat` also prints it on every launch, with a warning if the default distro isn't 24.04):
+
+```bash
+lsb_release -ds; pkg-config --modversion CycloneDDS
+```
+
+Optional, for playing across two laptops: copy `.wslconfig` from this repo to `%UserProfile%\.wslconfig` (for example `C:\Users\<you>\.wslconfig`), then run `wsl --shutdown` in PowerShell. WSL only reads the file from there. It turns on mirrored networking so DDS discovery reaches other machines on the network.
+
 ## Build on Linux
 
 Install your existing Cyclone DDS, GLFW3 and OpenGL development dependencies. Copy the **same `stb_image.h` and `stb_easy_font.h` you used for the working game** into this directory.
@@ -73,7 +92,7 @@ The game can be tested on one laptop with two separate client windows; only the 
 
 ## Accounts and the `.env` file
 
-The game opens on the login page: log in, sign up, or play as a guest (a temporary server-issued name that isn't saved). The main menu (Play, Settings, Quit) comes next. `assets/login.png` and `assets/main_menu.png` are AI-generated concept art, so declare them with your AI use; the menu image was edited to remove its Login sign. Accounts are stored in MongoDB when a `.env` file containing `MONGODB_URI` is present, and otherwise in a local `accounts.db` file. The game plays the same either way. `.env`, `accounts.db` and `security/generated/` are git-ignored and must not be committed or submitted. If MongoDB can't be reached, the server prints a warning and uses the local file.
+The game opens on the login page: log in, sign up, or play as a guest (a temporary server-issued name that isn't saved). The main menu (Play, Settings, Quit) comes next. `assets/login.png` and `assets/main_menu.png` are AI-generated concept art, so declare them with your AI use; the menu image was edited to remove its Login sign. Accounts are stored in MongoDB when a `.env` file containing `MONGODB_URI` is present, and otherwise in a local `accounts.db` file. The game plays the same either way. `.env` and `accounts.db` are git-ignored and must not be committed or submitted. `security/generated/` is committed on purpose: every teammate needs the same CA and identities, or their server and clients can't authenticate each other. Only regenerate it (`bash security/make_certs.sh`) if you then commit the new files for everyone, and keep the repo private, because it holds the private keys. If MongoDB can't be reached, the server prints a warning and uses the local file.
 
 ### Leaving, rejoining and logging out
 

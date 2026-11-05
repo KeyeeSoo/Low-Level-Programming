@@ -19,6 +19,11 @@ wsl -u root --exec bash -c "export DEBIAN_FRONTEND=noninteractive NEEDRESTART_MO
 if errorlevel 1 goto failed
 :dependencies_ready
 
+rem Show what this machine runs, so setup problems on a new laptop are easy to spot.
+rem The game is set up for Ubuntu 24.04 (wsl --install -d Ubuntu-24.04).
+echo Environment:
+wsl --exec bash -c "lsb_release -ds 2>/dev/null || grep PRETTY_NAME /etc/os-release; echo CycloneDDS $(pkg-config --modversion CycloneDDS); grep -q 'VERSION_ID=.24.04' /etc/os-release || echo WARNING: default WSL distro is not Ubuntu 24.04. In PowerShell run: wsl --install -d Ubuntu-24.04 then wsl --set-default Ubuntu-24.04"
+
 rem sed undoes CRLF line endings, which stop .sh files running on Linux.
 rem Rebuild only if the programs are missing or a source file is newer.
 wsl --cd "%~dp0." --exec bash -c "sed -i 's/\r$//' build.sh debug_build.sh security/make_certs.sh; [ -x server ] && [ -x client ] && ! find . -maxdepth 1 -type f \( -name '*.c' -o -name '*.h' -o -name '*.idl' \) -newer server | grep -q . || bash build.sh"
@@ -35,7 +40,10 @@ start "Gingerbread Player 1" /min wsl --cd "%~dp0." --exec bash -c "./client 1 >
 exit /b 0
 
 :no_wsl
-echo WSL is not installed. Run "wsl --install" in an admin PowerShell, restart, then try again.
+echo WSL is not installed. In an admin PowerShell run:
+echo     wsl --install -d Ubuntu-24.04
+echo     wsl --set-default Ubuntu-24.04
+echo then restart and try again.
 pause
 exit /b 1
 

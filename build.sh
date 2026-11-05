@@ -6,7 +6,8 @@ for f in stb_image.h stb_easy_font.h; do
   [[ -f "$f" ]] || { echo "Missing $f: copy it from your current working project." >&2; exit 1; }
 done
 idlc -l c messages.idl
-# Encryption keys are created once per machine and are never committed.
+# Encryption keys are committed in security/generated/ so all machines share them;
+# they are only created here if missing.
 [[ -f security/generated/permissions.p7s ]] || bash security/make_certs.sh
 SECURITY_LIB=$(dirname "$(find /usr/lib -name libdds_security_auth.so -print -quit)")
 SECURE_FLAGS="-DDDS_SECURITY_LIB_DIR=\"$SECURITY_LIB\""
