@@ -996,7 +996,12 @@ static void mouse_button(GLFWwindow *w,int button,int action,int mods){
     double cursor_x,cursor_y;glfwGetCursorPos(w,&cursor_x,&cursor_y);
     TracePoint p=window_to_canvas(cursor_x,cursor_y);
     if(app.screen==SCREEN_GAME && art_exit_hit_test(p.x,p.y)){
-        if(action==GLFW_PRESS)glfwSetWindowShouldClose(w,GLFW_TRUE);
+        /* Mid-game, Exit goes back to the menu: the server pauses the round for
+         * the partner, and pressing Play rejoins. After a win or loss it quits. */
+        if(action==GLFW_PRESS){
+            if(game_finished())glfwSetWindowShouldClose(w,GLFW_TRUE);
+            else return_to_menu();
+        }
         return;
     }
     if(app.screen==SCREEN_GAME && app.known_state &&
@@ -1301,7 +1306,12 @@ static void draw_disconnect_card(void){
     const char *partner="Your partner";
     if(app.partner_name[0])partner=app.partner_name;
     int away=app.state.int_away_player;
-    if(away && away==app.id){
+    if(app.returning_to_menu && app.state.int_phase!=PHASE_DISCONNECTED){
+        /* This player pressed Exit mid-game: the round pauses for the partner. */
+        title="Leaving the game";
+        snprintf(line1,sizeof(line1),"The game pauses for your partner.");
+        snprintf(line2,sizeof(line2),"%s",app.is_guest?"Guests can't rejoin a game.":"Press Play on the menu to rejoin.");
+    }else if(away && away==app.id){
         title="You were disconnected";
         snprintf(line1,sizeof(line1),"Your seat is saved while your partner waits.");
         snprintf(line2,sizeof(line2),"Return to the menu, then press Play to rejoin.");
